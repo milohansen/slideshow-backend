@@ -7,6 +7,12 @@ import { getDb } from "../db/schema.ts";
 import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { crypto } from "@std/crypto";
+import { 
+  isGCSEnabled, 
+  uploadFile, 
+  downloadFile, 
+  localPathToGCSPath 
+} from "./storage.ts";
 
 export interface DeviceSize {
   name: string;
@@ -34,6 +40,7 @@ interface ProcessedImageData {
 /**
  * Load configuration settings from database
  */
+// deno-lint-ignore require-await
 export async function loadConfig() {
   const db = getDb();
   
@@ -178,6 +185,19 @@ async function resizeImage(
     const error = new TextDecoder().decode(stderr);
     throw new Error(`Failed to resize image: ${error}`);
   }
+  
+  // Upload to GCS if enabled
+  if (isGCSEnabled()) {
+    const gcsPath = localPathToGCSPath(outputPath);
+    try {
+      const gcsUri = await uploadFile(outputPath, gcsPath, "image/jpeg");
+      console.log(`Uploaded to GCS: ${gcsUri}`);
+      // Clean up local file after successful upload
+      await Deno.remove(outputPath).catch(() => {});
+    } catch (error) {
+      console.error(`Failed to upload to GCS, keeping local file:`, error);
+    }
+  }
 }
 
 /**
@@ -222,11 +242,30 @@ export async function processImageForDevice(
     `${imageId}${ext}`
   );
 
-  // Resize image
+  // Resize image (this will also upload to GCS if enabled)
   await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
 
-  // Extract colors
-  const colors = await extractColors(outputPath);
+  // Determine the final storage path
+  const storagePath = isGCSEnabled() 
+    ? `gs://${Deno.env.get("GCS_BUCKET_NAME")}/${localPathToGCSPath(outputPath)}`
+    : outputPath;
+
+  // Extract colors - use local file if it exists, otherwise download from GCS
+  let colorExtractionPath = outputPath;
+  if (isGCSEnabled() && !await Deno.stat(outputPath).then(() => true).catch(() => false)) {
+    // File was uploaded and removed, need to download for color extraction
+    const tempPath = join(Deno.makeTempDirSync(), `temp${ext}`);
+    const gcsPath = localPathToGCSPath(outputPath);
+    await downloadFile(gcsPath, tempPath);
+    colorExtractionPath = tempPath;
+  }
+  
+  const colors = await extractColors(colorExtractionPath);
+  
+  // Clean up temp file if used
+  if (colorExtractionPath !== outputPath) {
+    await Deno.remove(colorExtractionPath).catch(() => {});
+  }
 
   const colorPalette: ColorPalette = {
     primary: colors[0] || "#000000",
@@ -235,7 +274,7 @@ export async function processImageForDevice(
     allColors: colors,
   };
 
-  // Store in database
+  // Store in database with storage path (either GCS URI or local path)
   const processedId = crypto.randomUUID();
   db.prepare(`
     INSERT INTO processed_images (
@@ -248,7 +287,7 @@ export async function processImageForDevice(
     deviceSize.name,
     deviceSize.width,
     deviceSize.height,
-    outputPath,
+    storagePath,  // Store GCS URI or local path
     colorPalette.primary,
     colorPalette.secondary,
     colorPalette.tertiary,
@@ -261,7 +300,7 @@ export async function processImageForDevice(
     deviceSize: deviceSize.name,
     width: deviceSize.width,
     height: deviceSize.height,
-    filePath: outputPath,
+    filePath: storagePath,
     colorPalette,
   };
 }

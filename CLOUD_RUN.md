@@ -53,11 +53,60 @@ open ${SERVICE_URL}/ui
 
 ### Environment Variables
 
+**Required:**
+- `GCS_BUCKET_NAME`: Google Cloud Storage bucket for image storage
+
+**Optional:**
+- `DENO_ENV`: Environment (production/development)
+- `LOG_LEVEL`: Logging level
+- `PORT`: Automatically set by Cloud Run to 8080
+
+Set environment variables during deployment:
 ```bash
 gcloud run services update slideshow-backend \
   --region us-central1 \
-  --set-env-vars="DENO_ENV=production,LOG_LEVEL=info"
+  --set-env-vars="GCS_BUCKET_NAME=your-slideshow-bucket,DENO_ENV=production,LOG_LEVEL=info"
 ```
+
+### Google Cloud Storage Setup
+
+**1. Create a GCS bucket:**
+```bash
+export PROJECT_ID=your-project-id
+export BUCKET_NAME=your-slideshow-bucket
+
+gsutil mb -p $PROJECT_ID gs://$BUCKET_NAME
+```
+
+**2. Grant Cloud Run service account access:**
+```bash
+# Get the Cloud Run service account
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format="value(projectNumber)")
+SERVICE_ACCOUNT="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+# Grant storage permissions
+gsutil iam ch serviceAccount:${SERVICE_ACCOUNT}:roles/storage.objectAdmin gs://$BUCKET_NAME
+```
+
+**3. Deploy with GCS configuration:**
+```bash
+gcloud run deploy slideshow-backend \
+  --region us-central1 \
+  --set-env-vars GCS_BUCKET_NAME=$BUCKET_NAME
+```
+
+**Storage Behavior:**
+
+When `GCS_BUCKET_NAME` is set:
+- All images are stored in Google Cloud Storage
+- Original images: `gs://bucket/images/originals/`
+- Processed images: `gs://bucket/images/processed/`
+- Local files are automatically cleaned up after GCS upload
+- Authentication uses Application Default Credentials (automatic in Cloud Run)
+
+When `GCS_BUCKET_NAME` is not set:
+- Images are stored in local filesystem (development only)
+- Not recommended for Cloud Run (ephemeral filesystem)
 
 ### Memory and CPU
 

@@ -210,6 +210,22 @@ Device screen sizes are configured in `config/settings.json`:
 }
 ```
 
+### Google Cloud Storage (Optional)
+
+For production deployments, configure Google Cloud Storage to store images:
+
+```bash
+export GCS_BUCKET_NAME=your-bucket-name
+```
+
+When `GCS_BUCKET_NAME` is set:
+- Original and processed images are stored in GCS instead of local filesystem
+- Local files are automatically cleaned up after upload
+- Required for Cloud Run deployments (ephemeral filesystem)
+- Uses Application Default Credentials for authentication
+
+See [CLOUD_RUN.md](CLOUD_RUN.md) for detailed setup instructions.
+
 ## How It Works
 
 ### 1. Image Ingestion

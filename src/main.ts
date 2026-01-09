@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { initDatabase } from "./db/schema.ts";
+import { initStorage } from "./services/storage.ts";
 import deviceRoutes from "./routes/devices.ts";
 import adminRoutes from "./routes/admin.ts";
 import uiRoutes from "./routes/ui.tsx";
@@ -12,8 +13,9 @@ const app = new Hono();
 app.use("*", logger());
 app.use("*", cors());
 
-// Initialize database
+// Initialize database and storage
 await initDatabase();
+initStorage();
 
 // Health check endpoint for Cloud Run
 app.get("/_health", (c) => {

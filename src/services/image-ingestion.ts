@@ -1,7 +1,8 @@
-import { getDb } from "../db/schema.ts";
-import { walk } from "@std/fs/walk";
 import { crypto } from "@std/crypto";
 import { encodeHex } from "@std/encoding/hex";
+import { walk } from "@std/fs/walk";
+import { getDb } from "../db/schema.ts";
+import { isGCSEnabled, uploadFile } from "./storage.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
@@ -35,9 +36,9 @@ async function getImageDimensions(filePath: string): Promise<[number, number]> {
       stdout: "piped",
       stderr: "piped",
     });
-    
+
     const { code, stdout } = await command.output();
-    
+
     if (code === 0) {
       const output = new TextDecoder().decode(stdout).trim();
       const [width, height] = output.split(" ").map(Number);
@@ -50,19 +51,13 @@ async function getImageDimensions(filePath: string): Promise<[number, number]> {
   // Fallback: Try using ffprobe for image dimensions
   try {
     const command = new Deno.Command("ffprobe", {
-      args: [
-        "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=width,height",
-        "-of", "csv=s=x:p=0",
-        filePath
-      ],
+      args: ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", filePath],
       stdout: "piped",
       stderr: "piped",
     });
-    
+
     const { code, stdout } = await command.output();
-    
+
     if (code === 0) {
       const output = new TextDecoder().decode(stdout).trim();
       const [width, height] = output.split("x").map(Number);
@@ -80,7 +75,7 @@ async function getImageDimensions(filePath: string): Promise<[number, number]> {
  */
 function determineOrientation(width: number, height: number): "portrait" | "landscape" | "square" {
   const ratio = width / height;
-  
+
   if (Math.abs(ratio - 1) < 0.05) {
     return "square";
   } else if (width > height) {
@@ -122,10 +117,25 @@ function imageExists(fileHash: string): boolean {
 /**
  * Store image metadata in database
  */
-function storeImageMetadata(id: string, metadata: ImageMetadata): void {
+async function storeImageMetadata(id: string, metadata: ImageMetadata): Promise<void> {
   const db = getDb();
-  
-  db.prepare(`
+
+  let storagePath = metadata.filePath;
+
+  // Upload original image to GCS if enabled
+  if (isGCSEnabled()) {
+    try {
+      const gcsPath = `images/originals/${id}${metadata.filePath.substring(metadata.filePath.lastIndexOf("."))}`;
+      const gcsUri = await uploadFile(metadata.filePath, gcsPath, "image/jpeg");
+      storagePath = gcsUri;
+      console.log(`  Uploaded original to GCS: ${gcsUri}`);
+    } catch (error) {
+      console.error(`  Failed to upload original to GCS, using local path:`, error);
+    }
+  }
+
+  db.prepare(
+    `
     INSERT INTO images (
       id, file_path, file_hash, width, height, orientation, last_modified
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -135,9 +145,10 @@ function storeImageMetadata(id: string, metadata: ImageMetadata): void {
       height = excluded.height,
       orientation = excluded.orientation,
       last_modified = excluded.last_modified
-  `).run(
+  `
+  ).run(
     id,
-    metadata.filePath,
+    storagePath, // Store GCS URI or local path
     metadata.fileHash,
     metadata.width,
     metadata.height,
@@ -168,7 +179,7 @@ export async function ingestImagesFromDirectory(
   errors: number;
 }> {
   const { recursive = true, verbose = false } = options;
-  
+
   let processed = 0;
   let skipped = 0;
   let errors = 0;
@@ -205,7 +216,7 @@ export async function ingestImagesFromDirectory(
 
         // Store in database
         const imageId = generateImageId();
-        storeImageMetadata(imageId, metadata);
+        await storeImageMetadata(imageId, metadata);
 
         if (verbose) {
           console.log(`  ✓ Ingested: ${entry.path} (${metadata.width}x${metadata.height}, ${metadata.orientation})`);
@@ -232,14 +243,18 @@ export function getImageStats(): {
   byOrientation: Record<string, number>;
 } {
   const db = getDb();
-  
+
   const total = db.prepare("SELECT COUNT(*) as count FROM images").get() as { count: number };
-  
-  const byOrientation = db.prepare(`
+
+  const byOrientation = db
+    .prepare(
+      `
     SELECT orientation, COUNT(*) as count 
     FROM images 
     GROUP BY orientation
-  `).all() as Array<{ orientation: string; count: number }>;
+  `
+    )
+    .all() as Array<{ orientation: string; count: number }>;
 
   const orientationMap: Record<string, number> = {};
   for (const row of byOrientation) {

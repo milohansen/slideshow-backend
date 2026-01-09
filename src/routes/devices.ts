@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getDb } from "../db/schema.ts";
 import { generateSlideshowQueue, getNextImage, loadQueueState } from "../services/slideshow-queue.ts";
+import { isGCSEnabled, readFile, parseGCSUri } from "../services/storage.ts";
 
 const devices = new Hono();
 
@@ -93,8 +94,25 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
       return c.json({ error: "Image not found" }, 404);
     }
     
-    // Serve the image file
-    const imageData = await Deno.readFile(processed.file_path);
+    let imageData: Uint8Array;
+    
+    // Check if file is in GCS or local
+    if (processed.file_path.startsWith("gs://")) {
+      // Read from Google Cloud Storage
+      if (!isGCSEnabled()) {
+        return c.json({ error: "GCS not configured" }, 500);
+      }
+      
+      const gcsInfo = parseGCSUri(processed.file_path);
+      if (!gcsInfo) {
+        return c.json({ error: "Invalid GCS path" }, 500);
+      }
+      
+      imageData = await readFile(gcsInfo.path);
+    } else {
+      // Read from local filesystem
+      imageData = await Deno.readFile(processed.file_path);
+    }
     
     return new Response(imageData, {
       headers: {
