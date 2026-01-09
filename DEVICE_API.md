@@ -103,13 +103,26 @@ Retrieve or regenerate the slideshow queue for a device. The queue contains a sh
   "queue": [
     {
       "imageId": "550e8400-e29b-41d4-a716-446655440000",
-      "filePath": "data/processed/large-landscape/550e8400-e29b-41d4-a716-446655440000.jpg"
+      "filePath": "data/processed/large-landscape/550e8400-e29b-41d4-a716-446655440000.jpg",
+      "colorPalette": {
+        "primary": "#2C5F7E",
+        "secondary": "#8FAADC",
+        "tertiary": "#E8F0F7",
+        "allColors": ["#2C5F7E", "#8FAADC", "#E8F0F7", "#456789", "#ABCDEF", "#F0F8FF", "#1A2B3C", "#7890AB"]
+      }
     },
     {
       "imageId": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
       "filePath": "data/processed/large-landscape/6ba7b810-9dad-11d1-80b4-00c04fd430c8.jpg",
+      "colorPalette": {
+        "primary": "#2A5D80",
+        "secondary": "#8CA9D8",
+        "tertiary": "#E5EFF9",
+        "allColors": ["#2A5D80", "#8CA9D8", "#E5EFF9", "#3F6B92", "#A8C0E4", "#F2F7FC", "#1C2F42", "#7B92B0"]
+      },
       "isPaired": true,
-      "pairedWith": "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+      "pairedWith": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "pairedFilePath": "data/processed/large-landscape/7c9e6679-7425-40de-944b-e07fc1f90ae7.jpg"
     }
   ],
   "currentIndex": 0,
@@ -120,8 +133,14 @@ Retrieve or regenerate the slideshow queue for a device. The queue contains a sh
 **Queue Item Fields:**
 - `imageId`: Unique identifier for the image
 - `filePath`: Internal storage path (use this to fetch the image)
+- `colorPalette`: Extracted color palette for the image
+  - `primary`: Most dominant color (hex code)
+  - `secondary`: Second most dominant color (hex code)
+  - `tertiary`: Third most dominant color (hex code)
+  - `allColors`: Array of up to 8 dominant colors (hex codes)
 - `isPaired` (optional): Indicates if this portrait image is paired with another
 - `pairedWith` (optional): The imageId of the paired portrait image
+- `pairedFilePath` (optional): The file path of the paired portrait image (for direct fetching)
 
 **Status Codes:**
 - `200 OK`: Queue retrieved successfully
@@ -149,6 +168,12 @@ Get the next image in the device's slideshow sequence. This automatically advanc
 {
   "imageId": "550e8400-e29b-41d4-a716-446655440000",
   "filePath": "data/processed/large-landscape/550e8400-e29b-41d4-a716-446655440000.jpg",
+  "colorPalette": {
+    "primary": "#2C5F7E",
+    "secondary": "#8FAADC",
+    "tertiary": "#E8F0F7",
+    "allColors": ["#2C5F7E", "#8FAADC", "#E8F0F7", "#456789", "#ABCDEF", "#F0F8FF", "#1A2B3C", "#7890AB"]
+  },
   "isPaired": false
 }
 ```
@@ -271,6 +296,16 @@ while True:
     
     item = response.json()
     image_id = item["imageId"]
+    color_palette = item["colorPalette"]
+    
+    # Use color palette for transitions or UI elements
+    print(f"Primary color: {color_palette['primary']}")
+    
+    # If image is paired, fetch both images
+    if item.get("isPaired") and item.get("pairedFilePath"):
+        paired_id = item["pairedWith"]
+        print(f"Image is paired with {paired_id}")
+        # Can fetch paired image using pairedFilePath
     
     # Download image
     image_response = requests.get(
@@ -319,6 +354,16 @@ async function showNextImage() {
   
   const item = await nextResponse.json();
   
+  // Use color palette for UI styling or transitions
+  const primaryColor = item.colorPalette.primary;
+  document.body.style.backgroundColor = primaryColor;
+  
+  // Handle paired images for portrait devices
+  if (item.isPaired && item.pairedFilePath) {
+    console.log(`Image paired with ${item.pairedWith}`);
+    // Can fetch paired image: item.pairedFilePath
+  }
+  
   // Download and display image
   const imageUrl = `${BASE_URL}/api/devices/${DEVICE_ID}/images/${item.imageId}`;
   const imgElement = document.querySelector("#slideshow-image");
@@ -360,8 +405,11 @@ Common error scenarios:
 
 Images are automatically processed for each registered device size:
 - Resized to exact device dimensions using center-crop
-- Color palette extracted (primary, secondary, tertiary colors)
+- Color palette extracted using ImageMagick (up to 8 dominant colors)
+  - Primary, secondary, and tertiary colors identified
+  - All extracted colors included in `allColors` array
 - Optimized JPEG quality (90%)
+- Thumbnail generated for UI (300x200px)
 - Portrait images on portrait devices are paired based on color similarity
 
 When a new device size is registered, existing images will be processed in the background.
@@ -374,12 +422,20 @@ When a new device size is registered, existing images will be processed in the b
 - Displays landscape-oriented images only
 - Random shuffle with no duplicates until all images shown
 - Automatically regenerates queue when exhausted
+- Each item includes color palette for UI enhancements
 
 ### Portrait Devices
 - Pairs portrait images with similar color palettes for side-by-side display
+- Color similarity threshold: 40% or higher for pairing
+- Paired items include `pairedFilePath` for direct image fetching
 - Includes unpaired portraits and landscape images in rotation
 - Maintains visual coherence through color similarity matching
 - Portrait pairs display consecutively in the queue
+
+### Color Palette Usage
+- Use `colorPalette.primary` for background colors or transitions
+- Use `colorPalette.allColors` for gradient effects or UI theming
+- Paired images have similar color palettes for visual harmony
 
 ---
 

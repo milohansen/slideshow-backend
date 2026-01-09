@@ -13,8 +13,10 @@ import {
 interface QueueItem {
   imageId: string;
   filePath: string;
+  colorPalette: ColorPalette;
   isPaired?: boolean;
   pairedWith?: string;
+  pairedFilePath?: string;
 }
 
 interface SlideshowQueue {
@@ -141,24 +143,30 @@ export function generateSlideshowQueue(
       );
 
       if (pairId) {
+        // Get the pair image data
+        const pair = availablePortraits.find((p) => p.imageId === pairId);
+        
         // Add as paired
         queue.push({
           imageId: portrait.imageId,
           filePath: portrait.filePath,
+          colorPalette: portrait.colorPalette,
           isPaired: true,
           pairedWith: pairId,
+          pairedFilePath: pair?.filePath,
         });
 
         usedPairs.add(portrait.imageId);
         usedPairs.add(pairId);
 
-        const pair = availablePortraits.find((p) => p.imageId === pairId);
         if (pair) {
           queue.push({
             imageId: pair.imageId,
             filePath: pair.filePath,
+            colorPalette: pair.colorPalette,
             isPaired: true,
             pairedWith: portrait.imageId,
+            pairedFilePath: portrait.filePath,
           });
         }
       } else {
@@ -166,6 +174,7 @@ export function generateSlideshowQueue(
         queue.push({
           imageId: portrait.imageId,
           filePath: portrait.filePath,
+          colorPalette: portrait.colorPalette,
         });
       }
 
@@ -179,6 +188,7 @@ export function generateSlideshowQueue(
       queue.push({
         imageId: img.imageId,
         filePath: img.filePath,
+        colorPalette: img.colorPalette,
       });
 
       if (queue.length >= queueSize) break;
@@ -192,6 +202,7 @@ export function generateSlideshowQueue(
       queue.push({
         imageId: img.imageId,
         filePath: img.filePath,
+        colorPalette: img.colorPalette,
       });
       if (queue.length >= queueSize) break;
     }
