@@ -19,5 +19,6 @@
     "jsx": "precompile",
     "jsxImportSource": "hono/jsx",
     "lib": ["deno.window", "deno.unstable", "deno.worker"]
-  }
+  },
+  "unstable": ["worker-options"]
 }
