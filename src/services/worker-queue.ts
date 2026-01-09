@@ -25,6 +25,7 @@ class WorkerQueueManager {
    * Add a task to the queue
    */
   enqueue(task: QueueTask) {
+    console.log(`[Queue] Enqueuing task: ${task.imageId} for ${task.deviceName}`);
     this.queue.push(task);
     this.processQueue();
   }
@@ -54,6 +55,7 @@ class WorkerQueueManager {
    */
   private spawnWorker(task: QueueTask) {
     this.activeWorkers++;
+    console.log(`[Queue] Spawning worker (${this.activeWorkers}/${this.maxConcurrentWorkers}): ${task.imageId} for ${task.deviceName}`);
 
     const worker = new Worker(this.workerUrl.href, {
       type: "module",
@@ -80,9 +82,9 @@ class WorkerQueueManager {
     worker.onmessage = (e: MessageEvent) => {
       const { success, imageId, deviceName, error } = e.data;
       if (success) {
-        console.log(`✓ Processed ${imageId} for ${deviceName}`);
+        console.log(`[Worker] ✓ Completed: ${imageId} for ${deviceName}`);
       } else {
-        console.error(`✗ Failed ${imageId} for ${deviceName}:`, error);
+        console.error(`[Worker] ✗ Failed: ${imageId} for ${deviceName}:`, error);
       }
       this.onWorkerComplete();
     };
@@ -98,6 +100,7 @@ class WorkerQueueManager {
    */
   private onWorkerComplete() {
     this.activeWorkers--;
+    console.log(`[Queue] Worker completed. Active: ${this.activeWorkers}, Queued: ${this.queue.length}`);
     this.processQueue();
   }
 
@@ -130,6 +133,7 @@ export function getWorkerQueue(): WorkerQueueManager {
  * Queue image processing for all device sizes
  */
 export async function queueImageProcessing(imageId: string) {
+  console.log(`[Processing] Starting queue for image: ${imageId}`);
   const { getDb } = await import("../db/schema.ts");
   const db = getDb();
 
@@ -145,9 +149,11 @@ export async function queueImageProcessing(imageId: string) {
   }>;
 
   if (devices.length === 0) {
-    console.warn(`No devices registered, skipping processing for ${imageId}`);
+    console.warn(`[Processing] No devices registered, skipping processing for ${imageId}`);
     return;
   }
+
+  console.log(`[Processing] Found ${devices.length} device sizes for ${imageId}`);
 
   // Generate thumbnail first (before device processing)
   await generateImageThumbnail(imageId);
@@ -161,6 +167,7 @@ export async function queueImageProcessing(imageId: string) {
     deviceHeight: device.height,
   }));
 
+  console.log(`[Processing] Queuing ${tasks.length} tasks for ${imageId}`);
   queue.enqueueMany(tasks);
 }
 
@@ -184,12 +191,15 @@ async function generateImageThumbnail(imageId: string) {
 
   // Only generate if not already created
   if (!image.thumbnail_path) {
+    console.log(`[Thumbnail] Generating thumbnail for ${imageId}`);
     try {
       const thumbnailPath = await generateThumbnail(image.file_path, imageId);
       db.prepare("UPDATE images SET thumbnail_path = ? WHERE id = ?").run(thumbnailPath, imageId);
-      console.log(`✓ Generated thumbnail for ${imageId}`);
+      console.log(`[Thumbnail] ✓ Generated thumbnail for ${imageId}: ${thumbnailPath}`);
     } catch (error) {
-      console.error(`✗ Failed to generate thumbnail for ${imageId}:`, error);
+      console.error(`[Thumbnail] ✗ Failed to generate thumbnail for ${imageId}:`, error);
     }
+  } else {
+    console.log(`[Thumbnail] Skipping ${imageId} (already exists at ${image.thumbnail_path})`);
   }
 }

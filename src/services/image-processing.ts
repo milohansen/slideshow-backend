@@ -262,6 +262,7 @@ export async function processImageForDevice(
   deviceSize: DeviceSize,
   outputDir: string
 ): Promise<ProcessedImageData> {
+  console.log(`[Processing] Starting processImageForDevice: ${imageId} for ${deviceSize.name}`);
   const db = getDb();
 
   // Get original image info
@@ -283,6 +284,7 @@ export async function processImageForDevice(
   ).get(imageId, deviceSize.name) as ProcessedImageData | undefined;
 
   if (existing) {
+    console.log(`[Processing] Image ${imageId} already processed for ${deviceSize.name}, skipping`);
     return {
       ...existing,
       colorPalette: JSON.parse(existing.colorPalette as unknown as string),
@@ -298,6 +300,7 @@ export async function processImageForDevice(
   );
 
   // Resize image (this will also upload to GCS if enabled)
+  console.log(`[Processing] Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
   await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
 
   // Determine the final storage path
@@ -305,6 +308,7 @@ export async function processImageForDevice(
     ? `gs://${Deno.env.get("GCS_BUCKET_NAME")}/${localPathToGCSPath(outputPath)}`
     : outputPath;
 
+  console.log(`[Processing] Extracting colors from ${imageId}`);
   // Extract colors - use local file if it exists, otherwise download from GCS
   let colorExtractionPath = outputPath;
   if (isGCSEnabled() && !await Deno.stat(outputPath).then(() => true).catch(() => false)) {
@@ -331,6 +335,7 @@ export async function processImageForDevice(
 
   // Store in database with storage path (either GCS URI or local path)
   const processedId = crypto.randomUUID();
+  console.log(`[Processing] Storing processed image ${imageId} for ${deviceSize.name} in database`);
   db.prepare(`
     INSERT INTO processed_images (
       id, image_id, device_size, width, height, file_path,
@@ -349,6 +354,7 @@ export async function processImageForDevice(
     JSON.stringify(colorPalette)
   );
 
+  console.log(`[Processing] ✓ Completed processing ${imageId} for ${deviceSize.name}`);
   return {
     id: processedId,
     imageId,
