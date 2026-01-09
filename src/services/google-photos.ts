@@ -203,6 +203,25 @@ export async function getAllMediaItems(
 }
 
 /**
+ * Delete a specific picker session from the database
+ */
+export function deletePickerSession(pickerSessionId: string): boolean {
+  const db = getDb();
+  
+  const result = db.prepare(`
+    DELETE FROM picker_sessions 
+    WHERE picker_session_id = ?
+  `).run(pickerSessionId);
+  
+  if (result.changes > 0) {
+    console.log(`🗑️  Deleted picker session: ${pickerSessionId}`);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
  * Clean up expired picker sessions based on their actual expireTime
  */
 export function cleanupExpiredSessions(): number {

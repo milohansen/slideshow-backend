@@ -3,7 +3,7 @@ import { join } from "@std/path";
 import { Hono } from "hono";
 import { getDb } from "../db/schema.ts";
 import { getAccessToken, getUserId } from "../middleware/auth.ts";
-import { createPickerSession, getAllMediaItems, getPickerSessionStatus, updatePickerSession } from "../services/google-photos.ts";
+import { createPickerSession, deletePickerSession, getAllMediaItems, getPickerSessionStatus, updatePickerSession } from "../services/google-photos.ts";
 import { extractImageMetadata, getImageStats, ingestImagesFromDirectory } from "../services/image-ingestion.ts";
 import { processAllImages } from "../services/image-processing.ts";
 import { isGCSEnabled, uploadFile } from "../services/storage.ts";
@@ -224,6 +224,17 @@ admin.get("/photos/picker/:sessionId", async (c) => {
   try {
     const status = await getPickerSessionStatus(accessToken, sessionId);
 
+    // If pickerUri is missing, the session has expired
+    if (!status.pickerUri) {
+      console.log(`⏰ Session ${sessionId} has expired (no pickerUri)`);
+      deletePickerSession(sessionId);
+      return c.json({
+        success: false,
+        expired: true,
+        error: "Session has expired. Please create a new session.",
+      }, 410); // 410 Gone
+    }
+
     // Update local database
     updatePickerSession(sessionId, status.mediaItemsSet);
 
@@ -332,6 +343,10 @@ admin.post("/photos/picker/:sessionId/ingest", async (c) => {
     const { ingestFromGooglePhotos } = await import("../services/image-ingestion.ts");
 
     const results = await ingestFromGooglePhotos(images);
+
+    // Clean up the session now that we've ingested the media
+    // Sessions expire shortly after media selection per Google's docs
+    deletePickerSession(sessionId);
 
     return c.json({
       success: true,

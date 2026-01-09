@@ -222,6 +222,22 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
             const statusMsg = document.getElementById("status-message");
             statusMsg.style.display = "block";
 
+            // Check if session has expired (410 Gone or expired flag)
+            if (response.status === 410 || data.expired) {
+              statusMsg.className = "status-message error";
+              statusMsg.textContent = "⏰ Session has expired. Please create a new session.";
+              
+              // Stop polling
+              if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+              }
+              
+              // Reload page to show create button
+              setTimeout(() => window.location.reload(), 2000);
+              return;
+            }
+
             // Update polling config if provided
             if (data.pollingConfig) {
               const newPollInterval = parseDuration(data.pollingConfig.pollInterval);
