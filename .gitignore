@@ -1,6 +1,6 @@
 # Deno
 .deno/
-deno.lock
+# deno.lock
 
 # Database
 *.db
