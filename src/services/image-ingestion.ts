@@ -138,13 +138,14 @@ async function storeImageMetadata(id: string, metadata: ImageMetadata): Promise<
   db.prepare(
     `
     INSERT INTO images (
-      id, file_path, file_hash, width, height, orientation, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      id, file_path, file_hash, width, height, orientation, processing_status, last_modified
+    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
     ON CONFLICT(file_path) DO UPDATE SET
       file_hash = excluded.file_hash,
       width = excluded.width,
       height = excluded.height,
       orientation = excluded.orientation,
+      processing_status = 'pending',
       last_modified = excluded.last_modified
   `
   ).run(

@@ -59,9 +59,39 @@ ui.get("/devices", (c) => {
   return c.html(<Devices devices={devices} />);
 });
 
+// Retry failed image processing
+ui.post("/images/:id/retry", async (c) => {
+  const imageId = c.req.param("id");
+  const db = getDb();
+  
+  // Verify image exists
+  const image = db.prepare("SELECT id, processing_status FROM images WHERE id = ?").get(imageId) as { id: string; processing_status: string } | undefined;
+  
+  if (!image) {
+    return c.redirect("/ui/images");
+  }
+  
+  console.log(`[UI] Retrying processing for image: ${imageId}`);
+  
+  // Reset status to pending and clear error
+  db.prepare("UPDATE images SET processing_status = 'pending', processing_error = NULL WHERE id = ?").run(imageId);
+  
+  // Queue for processing
+  const { queueImageProcessing } = await import("../services/worker-queue.ts");
+  await queueImageProcessing(imageId);
+  
+  return c.redirect("/ui/images");
+});
+
 // Images page
 ui.get("/images", (c) => {
   const db = getDb();
+  
+  // Get total device count
+  const deviceCountResult = db.prepare(
+    "SELECT COUNT(DISTINCT name) as total FROM devices"
+  ).get() as { total: number };
+  const totalDevices = deviceCountResult.total;
   
   const images = db.prepare(`
     SELECT 
@@ -71,9 +101,12 @@ ui.get("/images", (c) => {
       i.width,
       i.height,
       i.orientation,
+      i.processing_status,
+      i.processing_error,
       p.color_primary,
       p.color_secondary,
-      p.color_tertiary
+      p.color_tertiary,
+      COUNT(DISTINCT p.device_size) as processed_count
     FROM images i
     LEFT JOIN processed_images p ON i.id = p.image_id
     GROUP BY i.id
@@ -85,9 +118,12 @@ ui.get("/images", (c) => {
     width: number;
     height: number;
     orientation: string;
+    processing_status: string;
+    processing_error: string | null;
     color_primary: string | null;
     color_secondary: string | null;
     color_tertiary: string | null;
+    processed_count: number;
   }>;
 
   const imagesWithColors = images.map(img => ({
@@ -97,6 +133,10 @@ ui.get("/images", (c) => {
     width: img.width,
     height: img.height,
     orientation: img.orientation,
+    processingStatus: img.processing_status,
+    processingError: img.processing_error,
+    processedCount: img.processed_count,
+    totalDevices: totalDevices,
     colors: img.color_primary ? {
       primary: img.color_primary,
       secondary: img.color_secondary || "#000000",

@@ -29,6 +29,8 @@ export async function initDatabase() {
       height INTEGER NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
       thumbnail_path TEXT,
+      processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed')),
+      processing_error TEXT,
       ingested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_modified DATETIME NOT NULL
     )
@@ -104,6 +106,34 @@ function runMigrations(db: Database): void {
       console.log("🔄 Running migration: Adding thumbnail_path column to images table");
       db.exec("ALTER TABLE images ADD COLUMN thumbnail_path TEXT");
       console.log("✅ Migration completed: thumbnail_path column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 2: Add processing_status and processing_error columns
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasProcessingStatus = tableInfo.some(col => col.name === "processing_status");
+    const hasProcessingError = tableInfo.some(col => col.name === "processing_error");
+    
+    if (!hasProcessingStatus) {
+      console.log("🔄 Running migration: Adding processing_status column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed'))");
+      
+      // Set existing images to 'failed' status so they can be retried
+      const updatedCount = db.prepare("UPDATE images SET processing_status = 'failed', processing_error = 'Migration: status unknown' WHERE processing_status IS NULL OR processing_status = 'pending'").run();
+      if (updatedCount.changes > 0) {
+        console.log(`  ℹ️  Set ${updatedCount.changes} existing images to 'failed' status`);
+      }
+      
+      console.log("✅ Migration completed: processing_status column added");
+    }
+    
+    if (!hasProcessingError) {
+      console.log("🔄 Running migration: Adding processing_error column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN processing_error TEXT");
+      console.log("✅ Migration completed: processing_error column added");
     }
   } catch (error) {
     console.error("❌ Migration failed:", error);

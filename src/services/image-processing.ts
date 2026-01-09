@@ -255,6 +255,60 @@ export async function generateThumbnail(
 }
 
 /**
+ * Generate thumbnail for an image, handling GCS downloads if needed
+ */
+export async function generateImageThumbnail(imageId: string): Promise<void> {
+  const db = getDb();
+  
+  const image = db.prepare(
+    "SELECT file_path, thumbnail_path FROM images WHERE id = ?"
+  ).get(imageId) as { file_path: string; thumbnail_path: string | null } | undefined;
+
+  if (!image) {
+    console.error(`[Thumbnail] Image not found: ${imageId}`);
+    return;
+  }
+
+  // Only generate if not already created
+  if (image.thumbnail_path) {
+    console.log(`[Thumbnail] Skipping ${imageId} (already exists at ${image.thumbnail_path})`);
+    return;
+  }
+
+  console.log(`[Thumbnail] Generating thumbnail for ${imageId}`);
+  try {
+    let sourcePath = image.file_path;
+    let tempFile: string | null = null;
+    
+    // If file is in GCS, download it first
+    if (image.file_path.startsWith("gs://")) {
+      console.log(`[Thumbnail] Downloading from GCS: ${image.file_path}`);
+      const { parseGCSUri } = await import("./storage.ts");
+      const gcsInfo = parseGCSUri(image.file_path);
+      if (!gcsInfo) {
+        throw new Error(`Invalid GCS URI: ${image.file_path}`);
+      }
+      
+      const ext = image.file_path.substring(image.file_path.lastIndexOf("."));
+      tempFile = await Deno.makeTempFile({ suffix: ext });
+      await downloadFile(gcsInfo.path, tempFile);
+      sourcePath = tempFile;
+    }
+    
+    const thumbnailPath = await generateThumbnail(sourcePath, imageId);
+    db.prepare("UPDATE images SET thumbnail_path = ? WHERE id = ?").run(thumbnailPath, imageId);
+    console.log(`[Thumbnail] ✓ Generated thumbnail for ${imageId}: ${thumbnailPath}`);
+    
+    // Clean up temp file
+    if (tempFile) {
+      await Deno.remove(tempFile).catch(() => {});
+    }
+  } catch (error) {
+    console.error(`[Thumbnail] ✗ Failed to generate thumbnail for ${imageId}:`, error);
+  }
+}
+
+/**
  * Process a single image for a specific device size
  */
 export async function processImageForDevice(

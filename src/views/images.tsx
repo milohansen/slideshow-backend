@@ -8,6 +8,10 @@ interface ImageData {
   width: number;
   height: number;
   orientation: string;
+  processingStatus: string;
+  processingError: string | null;
+  processedCount: number;
+  totalDevices: number;
   colors: {
     primary: string;
     secondary: string;
@@ -39,11 +43,13 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                 <th>File Path</th>
                 <th>Dimensions</th>
                 <th>Orientation</th>
+                <th>Processing Status</th>
                 <th>Color Palette</th>
               </tr>
             </thead>
             <tbody>
-              {images.map((image) => (
+              {images.map((image) => {
+                return (
                 <tr>
                   <td>
                     {image.thumbnail_path ? (
@@ -66,6 +72,40 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                     <span class={`badge badge-${image.orientation}`}>
                       {image.orientation}
                     </span>
+                  </td>
+                  <td>
+                    {image.processingStatus === 'complete' ? (
+                      <span class="badge" style="background-color: #22c55e; color: white;">
+                        ✓ Complete ({image.processedCount}/{image.totalDevices})
+                      </span>
+                    ) : image.processingStatus === 'failed' ? (
+                      <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <span 
+                          class="badge" 
+                          style="background-color: #ef4444; color: white; cursor: help;"
+                          title={image.processingError || 'Processing failed'}
+                        >
+                          ✗ Failed
+                        </span>
+                        <form method="POST" action={`/ui/images/${image.id}/retry`} style="margin: 0;">
+                          <button 
+                            type="submit" 
+                            class="btn-small"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.85rem; background-color: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                          >
+                            ⟳ Retry
+                          </button>
+                        </form>
+                      </div>
+                    ) : image.processingStatus === 'processing' ? (
+                      <span class="badge" style="background-color: #3b82f6; color: white;">
+                        ⟳ Processing ({image.processedCount}/{image.totalDevices})
+                      </span>
+                    ) : (
+                      <span class="badge" style="background-color: #94a3b8; color: white;">
+                        ○ Pending
+                      </span>
+                    )}
                   </td>
                   <td>
                     {image.colors ? (
@@ -91,7 +131,8 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                     )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

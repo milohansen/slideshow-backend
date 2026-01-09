@@ -15,6 +15,7 @@ class WorkerQueueManager {
   private activeWorkers = 0;
   private maxConcurrentWorkers: number;
   private workerUrl: URL;
+  private imageTaskCounts = new Map<string, { total: number; completed: number; failed: number }>();
 
   constructor(maxConcurrentWorkers = 4) {
     this.maxConcurrentWorkers = maxConcurrentWorkers;
@@ -33,7 +34,10 @@ class WorkerQueueManager {
   /**
    * Add multiple tasks to the queue
    */
-  enqueueMany(tasks: QueueTask[]) {
+  enqueueMany(tasks: QueueTask[], imageId?: string) {
+    if (imageId && tasks.length > 0) {
+      this.imageTaskCounts.set(imageId, { total: tasks.length, completed: 0, failed: 0 });
+    }
     this.queue.push(...tasks);
     this.processQueue();
   }
@@ -86,7 +90,7 @@ class WorkerQueueManager {
       } else {
         console.error(`[Worker] ✗ Failed: ${imageId} for ${deviceName}:`, error);
       }
-      this.onWorkerComplete();
+      this.onWorkerComplete(task.imageId, success, error);
     };
 
     worker.onerror = (e: ErrorEvent) => {
@@ -98,9 +102,42 @@ class WorkerQueueManager {
   /**
    * Handle worker completion
    */
-  private onWorkerComplete() {
+  private async onWorkerComplete(imageId: string, success: boolean, error?: string) {
     this.activeWorkers--;
     console.log(`[Queue] Worker completed. Active: ${this.activeWorkers}, Queued: ${this.queue.length}`);
+    
+    // Update task counts for this image
+    const taskCount = this.imageTaskCounts.get(imageId);
+    if (taskCount) {
+      if (success) {
+        taskCount.completed++;
+      } else {
+        taskCount.failed++;
+      }
+      
+      // Check if all tasks for this image are complete
+      const total = taskCount.completed + taskCount.failed;
+      if (total >= taskCount.total) {
+        console.log(`[Queue] All tasks completed for ${imageId}: ${taskCount.completed} successful, ${taskCount.failed} failed`);
+        
+        // Update database status
+        const { getDb } = await import("../db/schema.ts");
+        const db = getDb();
+        
+        if (taskCount.failed > 0) {
+          db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ? WHERE id = ?").run(
+            `Processing failed for ${taskCount.failed}/${taskCount.total} device sizes`,
+            imageId
+          );
+        } else {
+          db.prepare("UPDATE images SET processing_status = 'complete', processing_error = NULL WHERE id = ?").run(imageId);
+        }
+        
+        // Clean up tracking
+        this.imageTaskCounts.delete(imageId);
+      }
+    }
+    
     this.processQueue();
   }
 
@@ -135,7 +172,11 @@ export function getWorkerQueue(): WorkerQueueManager {
 export async function queueImageProcessing(imageId: string) {
   console.log(`[Processing] Starting queue for image: ${imageId}`);
   const { getDb } = await import("../db/schema.ts");
+  const { generateImageThumbnail } = await import("./image-processing.ts");
   const db = getDb();
+
+  // Set status to processing
+  db.prepare("UPDATE images SET processing_status = 'processing' WHERE id = ?").run(imageId);
 
   // Get all registered devices
   const devices = db.prepare(`
@@ -150,13 +191,23 @@ export async function queueImageProcessing(imageId: string) {
 
   if (devices.length === 0) {
     console.warn(`[Processing] No devices registered, skipping processing for ${imageId}`);
+    db.prepare("UPDATE images SET processing_status = 'complete' WHERE id = ?").run(imageId);
     return;
   }
 
   console.log(`[Processing] Found ${devices.length} device sizes for ${imageId}`);
 
   // Generate thumbnail first (before device processing)
-  await generateImageThumbnail(imageId);
+  try {
+    await generateImageThumbnail(imageId);
+  } catch (error) {
+    console.error(`[Processing] Failed to generate thumbnail for ${imageId}:`, error);
+    db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ? WHERE id = ?").run(
+      `Thumbnail generation failed: ${error.message}`,
+      imageId
+    );
+    return;
+  }
 
   // Queue tasks for each device size
   const queue = getWorkerQueue();
@@ -168,38 +219,5 @@ export async function queueImageProcessing(imageId: string) {
   }));
 
   console.log(`[Processing] Queuing ${tasks.length} tasks for ${imageId}`);
-  queue.enqueueMany(tasks);
-}
-
-/**
- * Generate thumbnail for an image (shared function)
- */
-async function generateImageThumbnail(imageId: string) {
-  const { getDb } = await import("../db/schema.ts");
-  const { generateThumbnail } = await import("./image-processing.ts");
-  
-  const db = getDb();
-  
-  const image = db.prepare(
-    "SELECT file_path, thumbnail_path FROM images WHERE id = ?"
-  ).get(imageId) as { file_path: string; thumbnail_path: string | null } | undefined;
-
-  if (!image) {
-    console.error(`Image not found: ${imageId}`);
-    return;
-  }
-
-  // Only generate if not already created
-  if (!image.thumbnail_path) {
-    console.log(`[Thumbnail] Generating thumbnail for ${imageId}`);
-    try {
-      const thumbnailPath = await generateThumbnail(image.file_path, imageId);
-      db.prepare("UPDATE images SET thumbnail_path = ? WHERE id = ?").run(thumbnailPath, imageId);
-      console.log(`[Thumbnail] ✓ Generated thumbnail for ${imageId}: ${thumbnailPath}`);
-    } catch (error) {
-      console.error(`[Thumbnail] ✗ Failed to generate thumbnail for ${imageId}:`, error);
-    }
-  } else {
-    console.log(`[Thumbnail] Skipping ${imageId} (already exists at ${image.thumbnail_path})`);
-  }
+  queue.enqueueMany(tasks, imageId);
 }
