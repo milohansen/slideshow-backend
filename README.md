@@ -2,6 +2,8 @@
 
 A containerized backend service to ingest, process, and serve photos to ESPHome devices via REST API.
 
+[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
+
 ## Features
 
 - 📸 **Image Ingestion** - Scan local directories and extract metadata (dimensions, orientation)
@@ -12,20 +14,21 @@ A containerized backend service to ingest, process, and serve photos to ESPHome 
 - 💾 **Deduplication** - Hash-based duplicate detection
 - 🚀 **REST API** - Full REST API for device management and image serving
 - 🐳 **Docker Ready** - Containerized for easy deployment
+- ☁️ **Cloud Run Ready** - Optimized for Google Cloud Run deployment
 
 ## Stack
 
 - **Runtime:** Deno 2.x
 - **Framework:** Hono
 - **Database:** SQLite
-- **Image Processing:** Sharp (via FFI)
+- **Image Processing:** ImageMagick
 
 ## Getting Started
 
 ### Prerequisites
 
 - Deno 2.x
-- ImageMagick or ffmpeg (for extracting image dimensions)
+- ImageMagick (for image processing)
 
 ### Development
 
@@ -103,8 +106,68 @@ deno task start
 docker build -t slideshow-backend .
 
 # Run container
-docker run -p 8000:8000 -v $(pwd)/data:/app/data slideshow-backend
+docker run -p 8080:8080 -v $(pwd)/data:/app/data slideshow-backend
 ```
+
+## Deploying to Google Cloud Run
+
+### Prerequisites
+
+1. Install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install)
+2. Set up your project:
+```bash
+export PROJECT_ID=<your-gcp-project-id>
+gcloud config set project $PROJECT_ID
+```
+
+### Enable Required APIs
+
+```bash
+gcloud services enable run.googleapis.com
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
+```
+
+### Deploy with Cloud Build
+
+```bash
+# Submit build to Cloud Build
+gcloud builds submit --config cloudbuild.yaml
+
+# Or deploy directly with gcloud
+gcloud run deploy slideshow-backend \
+  --source . \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --memory 512Mi \
+  --cpu 1 \
+  --max-instances 10
+```
+
+### Environment Variables
+
+Set environment variables for your Cloud Run service:
+
+```bash
+gcloud run services update slideshow-backend \
+  --region us-central1 \
+  --set-env-vars="DENO_ENV=production"
+```
+
+### Persistent Storage
+
+For production deployments with persistent image storage, consider:
+- Using Google Cloud Storage for images
+- Mounting Cloud Storage buckets via gcsfuse
+- Using Cloud SQL for the database (instead of SQLite)
+
+### Monitoring
+
+Cloud Run automatically provides:
+- Request logs in Cloud Logging
+- Metrics in Cloud Monitoring
+- Health checks via the `/_health` endpoint
 
 ## API Endpoints
 

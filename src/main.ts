@@ -15,6 +15,11 @@ app.use("*", cors());
 // Initialize database
 await initDatabase();
 
+// Health check endpoint for Cloud Run
+app.get("/_health", (c) => {
+  return c.json({ status: "healthy", timestamp: new Date().toISOString() });
+});
+
 // Routes
 app.route("/ui", uiRoutes);
 app.route("/api/devices", deviceRoutes);
@@ -25,9 +30,31 @@ app.get("/", (c) => {
   return c.redirect("/ui");
 });
 
-// Start server
-const port = Number(Deno.env.get("PORT")) || 8000;
+// Cloud Run sets PORT environment variable (default to 8080 for local dev)
+const port = Number(Deno.env.get("PORT")) || 8080;
 
-Deno.serve({ port, hostname: "0.0.0.0" }, app.fetch);
+const server = Deno.serve({ 
+  port, 
+  hostname: "0.0.0.0",
+  onListen: ({ hostname, port }) => {
+    console.log(`🚀 Server running on http://${hostname}:${port}`);
+  }
+}, app.fetch);
 
-console.log(`🚀 Server running on http://localhost:${port}`);
+// Graceful shutdown handling for Cloud Run
+const shutdown = async (signal: string) => {
+  console.log(`\n${signal} received, starting graceful shutdown...`);
+  
+  try {
+    await server.shutdown();
+    console.log("Server closed successfully");
+    Deno.exit(0);
+  } catch (error) {
+    console.error("Error during shutdown:", error);
+    Deno.exit(1);
+  }
+};
+
+// Handle termination signals (Cloud Run sends SIGTERM)
+Deno.addSignalListener("SIGTERM", () => shutdown("SIGTERM"));
+Deno.addSignalListener("SIGINT", () => shutdown("SIGINT"));

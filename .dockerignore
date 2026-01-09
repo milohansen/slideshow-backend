@@ -1,0 +1,35 @@
+# Deployment files
+.git
+.gitignore
+.github
+
+# Development files
+*.md
+!README.md
+
+# Test files
+test/
+tests/
+*.test.ts
+*.spec.ts
+
+# Local development
+.env
+.vscode/
+.idea/
+
+# Build artifacts
+node_modules/
+npm-debug.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+tmp/
+
+# Documentation
+docs/
