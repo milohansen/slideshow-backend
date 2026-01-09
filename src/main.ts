@@ -51,18 +51,15 @@ async function processUnprocessedImages() {
 app.use("*", logger());
 app.use("*", cors());
 
-// Initialize database and storage
-await initDatabase();
+// Initialize storage first
 initStorage();
 
-// Process any unprocessed images on startup
-processUnprocessedImages();
-
-// Initialize database sync manager (Cloud Run only)
+// Initialize database sync manager BEFORE initializing database (Cloud Run only)
 let dbSync: DatabaseSyncManager | null = null;
 const gcsBucketName = Deno.env.get("GCS_BUCKET_NAME");
 
 if (gcsBucketName && Deno.env.get("DENO_ENV") === "production") {
+  console.log("🌩️  Cloud Run environment detected - initializing database sync");
   const instanceId = crypto.randomUUID();
   
   dbSync = new DatabaseSyncManager({
@@ -74,8 +71,15 @@ if (gcsBucketName && Deno.env.get("DENO_ENV") === "production") {
     instanceId,
   });
   
+  // Download database from GCS BEFORE initializing
   await dbSync.initialize();
 }
+
+// NOW initialize database (will use downloaded file if it exists)
+await initDatabase();
+
+// Process any unprocessed images on startup
+processUnprocessedImages();
 
 // Health check endpoint for Cloud Run
 app.get("/_health", (c) => {
