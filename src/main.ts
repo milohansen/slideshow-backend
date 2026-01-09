@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
-import { initDatabase } from "./db/schema.ts";
+import { initDatabase, getDb } from "./db/schema.ts";
 import { initStorage } from "./services/storage.ts";
 import { DatabaseSyncManager } from "./db/sync.ts";
 import { crypto } from "@std/crypto";
@@ -11,6 +11,69 @@ import uiRoutes from "./routes/ui.tsx";
 
 const app = new Hono();
 
+/**
+ * Process any images that haven't been processed for all device sizes
+ */
+function processUnprocessedImages() {
+  try {
+    const db = getDb();
+    
+    // Find images that don't have processed versions for all device sizes
+    const unprocessedImages = db.prepare(`
+      SELECT DISTINCT i.id
+      FROM images i
+      LEFT JOIN (
+        SELECT image_id, COUNT(DISTINCT device_size) as device_count
+        FROM processed_images
+        GROUP BY image_id
+      ) pi ON i.id = pi.image_id
+      LEFT JOIN (
+        SELECT COUNT(DISTINCT name) as total_devices
+        FROM devices
+      ) d
+      WHERE pi.device_count IS NULL OR pi.device_count < d.total_devices
+    `).all() as Array<{ id: string }>;
+
+    if (unprocessedImages.length > 0) {
+      console.log(`📸 Found ${unprocessedImages.length} images to process on startup`);
+      
+      for (const image of unprocessedImages) {
+        const workerUrl = new URL("./workers/image-processor.ts", import.meta.url);
+        const worker = new Worker(workerUrl.href, {
+          type: "module",
+          deno: {
+            permissions: {
+              read: true,
+              write: true,
+              env: true,
+              net: true,
+              run: true,
+            },
+          },
+        });
+
+        worker.postMessage({
+          imageId: image.id,
+          outputDir: "data/processed",
+        });
+
+        worker.onmessage = (e: MessageEvent) => {
+          const { success, imageId } = e.data;
+          if (success) {
+            console.log(`✓ Startup processing completed for ${imageId}`);
+          }
+        };
+
+        worker.onerror = (e: ErrorEvent) => {
+          console.error(`✗ Startup worker error:`, e.message);
+        };
+      }
+    }
+  } catch (error) {
+    console.error("Failed to check for unprocessed images:", error);
+  }
+}
+
 // Middleware
 app.use("*", logger());
 app.use("*", cors());
@@ -18,6 +81,9 @@ app.use("*", cors());
 // Initialize database and storage
 await initDatabase();
 initStorage();
+
+// Process any unprocessed images on startup
+processUnprocessedImages();
 
 // Initialize database sync manager (Cloud Run only)
 let dbSync: DatabaseSyncManager | null = null;
