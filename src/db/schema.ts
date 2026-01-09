@@ -81,7 +81,50 @@ export async function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_image_id ON processed_images(image_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_device_size ON processed_images(device_size)`);
 
+  // Initialize with default devices if table is empty
+  initializeDefaultDevices(db);
+
   console.log("✅ Database initialized");
+}
+
+/**
+ * Initialize default devices if devices table is empty
+ */
+function initializeDefaultDevices(db: Database): void {
+  const count = db.prepare("SELECT COUNT(*) as count FROM devices").get() as { count: number };
+  
+  if (count.count === 0) {
+    console.log("📱 Initializing default devices...");
+    
+    const defaultDevices = [
+      {
+        id: "kitchen-display",
+        name: "Kitchen Display",
+        width: 1024,
+        height: 600,
+        orientation: "landscape",
+      },
+      {
+        id: "bedroom-clock",
+        name: "Bedroom Clock",
+        width: 300,
+        height: 400,
+        orientation: "portrait",
+      },
+    ];
+    
+    const stmt = db.prepare(`
+      INSERT INTO devices (id, name, width, height, orientation, last_seen)
+      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+    
+    for (const device of defaultDevices) {
+      stmt.run(device.id, device.name, device.width, device.height, device.orientation);
+      console.log(`  ✓ ${device.name} (${device.width}x${device.height} ${device.orientation})`);
+    }
+    
+    console.log(`✅ Initialized ${defaultDevices.length} default devices`);
+  }
 }
 
 export function closeDatabase() {
