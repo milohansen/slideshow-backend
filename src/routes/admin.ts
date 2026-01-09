@@ -22,6 +22,7 @@ function processImageInBackground(imageId: string) {
         env: true,
         net: true,
         run: true,
+        ffi: true,
       },
     },
   });
