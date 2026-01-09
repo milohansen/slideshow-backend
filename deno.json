@@ -1,6 +1,6 @@
 {
   "tasks": {
-    "dev": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run --watch src/main.ts",
+    "dev": "deno run -A --env --watch src/main.ts",
     "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
     "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts",
     "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts"

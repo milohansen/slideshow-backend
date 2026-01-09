@@ -204,7 +204,7 @@ ui.get("/thumbnails/:imageId", async (c) => {
   }
   
   try {
-    let imageData: Uint8Array;
+    let imageData: Uint8Array<ArrayBuffer>;
     
     // Check if file is in GCS or local
     if (image.thumbnail_path.startsWith("gs://")) {
@@ -234,18 +234,22 @@ ui.get("/photos-picker", async (c) => {
   
   if (!userId) {
     // Not authenticated, redirect to login
+    console.log("[UI] User not authenticated, redirecting to /auth/google", Deno.env.get("CLIENT_ID"), Deno.env.get("REDIRECT_URI"));
     return c.redirect("/auth/google");
   }
 
-  // Check if there's an active picker session for this user
+  // Check if there's a non-expired picker session for this user
   const db = getDb();
+  const now = new Date().toISOString();
+  
   const session = db.prepare(`
-    SELECT picker_session_id, picker_uri 
+    SELECT picker_session_id, picker_uri, created_at, expire_time
     FROM picker_sessions 
     WHERE user_id = ? 
+      AND (expire_time IS NULL OR expire_time > ?)
     ORDER BY created_at DESC 
     LIMIT 1
-  `).get(userId) as { picker_session_id: string; picker_uri: string } | undefined;
+  `).get(userId, now) as { picker_session_id: string; picker_uri: string; created_at: string; expire_time: string | null } | undefined;
 
   return c.html(<PhotosPicker session={session ? { sessionId: session.picker_session_id, pickerUri: session.picker_uri } : null} />);
 });

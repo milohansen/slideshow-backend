@@ -49,6 +49,9 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
                 <button id="check-status-btn" class="button button-secondary">
                   Check Status
                 </button>
+                <button id="new-session-btn" class="button button-secondary">
+                  Create New Session
+                </button>
               </div>
 
               <div id="status-message" class="status-message" style="display: none;"></div>
@@ -164,6 +167,21 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
       <script dangerouslySetInnerHTML={{ __html: `
         const sessionId = ${session ? JSON.stringify(session.sessionId) : "null"};
         let pollInterval = null;
+        let pollIntervalMs = 10000; // Default 10 seconds
+        let longPollTimeoutMs = 60000; // Default 60 seconds
+
+        // Parse ISO 8601 duration (e.g., "PT10S" -> 10000ms)
+        function parseDuration(duration) {
+          if (!duration) return null;
+          const match = duration.match(/PT(\\d+(?:\\.\\d+)?)([HMS])/);
+          if (!match) return null;
+          const value = parseFloat(match[1]);
+          const unit = match[2];
+          if (unit === 'H') return value * 3600000;
+          if (unit === 'M') return value * 60000;
+          if (unit === 'S') return value * 1000;
+          return null;
+        }
 
         // Create picker session
         const createBtn = document.getElementById("create-session-btn");
@@ -204,6 +222,24 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
             const statusMsg = document.getElementById("status-message");
             statusMsg.style.display = "block";
 
+            // Update polling config if provided
+            if (data.pollingConfig) {
+              const newPollInterval = parseDuration(data.pollingConfig.pollInterval);
+              if (newPollInterval && newPollInterval !== pollIntervalMs) {
+                pollIntervalMs = newPollInterval;
+                console.log(\`Updated poll interval to \${pollIntervalMs}ms\`);
+                // Restart polling with new interval
+                if (pollInterval) {
+                  clearInterval(pollInterval);
+                  pollInterval = setInterval(checkStatus, pollIntervalMs);
+                }
+              }
+              const newLongPollTimeout = parseDuration(data.pollingConfig.longPollTimeout);
+              if (newLongPollTimeout) {
+                longPollTimeoutMs = newLongPollTimeout;
+              }
+            }
+
             if (data.mediaItemsSet) {
               statusMsg.className = "status-message success";
               statusMsg.textContent = "✅ Photos have been selected! Loading preview...";
@@ -231,7 +267,17 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
             const response = await fetch("/api/admin/photos/picker/" + sessionId + "/media");
             const data = await response.json();
 
-            if (!data.success || data.count === 0) {
+            if (!data.success) {
+              const statusMsg = document.getElementById("status-message");
+              statusMsg.className = "status-message error";
+              statusMsg.textContent = "❌ " + (data.error || "Failed to load media items");
+              return;
+            }
+
+            if (data.count === 0) {
+              const statusMsg = document.getElementById("status-message");
+              statusMsg.className = "status-message";
+              statusMsg.textContent = "⚠️ No photos found in selection";
               return;
             }
 
@@ -268,9 +314,35 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
           checkBtn.addEventListener("click", () => {
             checkStatus();
             
-            // Start polling every 10 seconds
+            // Start polling at configured interval
             if (!pollInterval) {
-              pollInterval = setInterval(checkStatus, 10000);
+              pollInterval = setInterval(checkStatus, pollIntervalMs);
+            }
+          });
+        }
+
+        // New session button
+        const newSessionBtn = document.getElementById("new-session-btn");
+        if (newSessionBtn) {
+          newSessionBtn.addEventListener("click", async () => {
+            newSessionBtn.disabled = true;
+            newSessionBtn.textContent = "Creating...";
+            
+            try {
+              const response = await fetch("/api/admin/photos/picker/create", {
+                method: "POST",
+              });
+
+              if (!response.ok) {
+                throw new Error("Failed to create session");
+              }
+
+              // Reload page with new session
+              window.location.reload();
+            } catch (error) {
+              alert("Failed to create new session: " + error.message);
+              newSessionBtn.disabled = false;
+              newSessionBtn.textContent = "Create New Session";
             }
           });
         }
@@ -314,8 +386,17 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
 
         // Auto-start polling if session exists
         if (sessionId) {
+          // Initialize polling config from session data
+          const sessionPollingConfig = ${session ? JSON.stringify(session.pollingConfig || null) : "null"};
+          if (sessionPollingConfig) {
+            const interval = parseDuration(sessionPollingConfig.pollInterval);
+            if (interval) pollIntervalMs = interval;
+            const timeout = parseDuration(sessionPollingConfig.longPollTimeout);
+            if (timeout) longPollTimeoutMs = timeout;
+          }
+          
           checkStatus();
-          pollInterval = setInterval(checkStatus, 10000);
+          pollInterval = setInterval(checkStatus, pollIntervalMs);
         }
       ` }} />
     </Layout>

@@ -40,6 +40,9 @@ export async function createPickerSession(
   accessToken: string,
   userId: string
 ): Promise<PickerSession> {
+  // Clean up expired sessions first
+  cleanupExpiredSessions();
+  
   const response = await fetch(`${PICKER_API_BASE}/sessions`, {
     method: "POST",
     headers: {
@@ -61,15 +64,16 @@ export async function createPickerSession(
   const pollingConfig = data.pollingConfig ? JSON.stringify(data.pollingConfig) : null;
 
   const result = db.prepare(`
-    INSERT INTO picker_sessions (user_id, picker_session_id, picker_uri, media_items_set, polling_config)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO picker_sessions (user_id, picker_session_id, picker_uri, media_items_set, polling_config, expire_time)
+    VALUES (?, ?, ?, ?, ?, ?)
     RETURNING *
   `).get(
     userId,
     data.id,
     data.pickerUri,
     false,
-    pollingConfig
+    pollingConfig,
+    data.expireTime || null
   ) as PickerSession;
 
   console.log(`✅ Created picker session: ${data.id}`);
@@ -103,7 +107,10 @@ export async function getPickerSessionStatus(
     throw new Error(`Failed to get picker session: ${response.status} ${error}`);
   }
 
-  return await response.json();
+  const result = await response.json();
+  console.log(`📊 Session status for ${pickerSessionId}:`, result);
+  
+  return result;
 }
 
 /**
@@ -144,6 +151,7 @@ export async function listMediaItems(
   nextPageToken?: string;
 }> {
   const params = new URLSearchParams({
+    sessionId: pickerSessionId,
     pageSize: pageSize.toString(),
   });
 
@@ -152,7 +160,7 @@ export async function listMediaItems(
   }
 
   const response = await fetch(
-    `${PICKER_API_BASE}/sessions/${pickerSessionId}/mediaItems?${params}`,
+    `${PICKER_API_BASE}/mediaItems?${params}`,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -192,6 +200,25 @@ export async function getAllMediaItems(
   console.log(`📸 Retrieved ${allItems.length} media items from picker session`);
 
   return allItems;
+}
+
+/**
+ * Clean up expired picker sessions based on their actual expireTime
+ */
+export function cleanupExpiredSessions(): number {
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  const result = db.prepare(`
+    DELETE FROM picker_sessions 
+    WHERE expire_time IS NOT NULL AND expire_time < ?
+  `).run(now);
+  
+  if (result.changes > 0) {
+    console.log(`🧹 Cleaned up ${result.changes} expired picker sessions`);
+  }
+  
+  return result.changes;
 }
 
 /**

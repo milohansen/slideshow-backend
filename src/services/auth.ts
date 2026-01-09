@@ -6,7 +6,7 @@ import { encodeHex } from "@std/encoding/hex";
 export const google = new Google(
   Deno.env.get("CLIENT_ID")!,
   Deno.env.get("CLIENT_SECRET")!,
-  Deno.env.get("REDIRECT_URI") || "http://localhost:8000/auth/callback/google"
+  Deno.env.get("REDIRECT_URI") || "http://localhost:8080/auth/google/callback"
 );
 
 export interface UserSession {

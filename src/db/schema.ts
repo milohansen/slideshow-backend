@@ -161,6 +161,20 @@ function runMigrations(db: Database): void {
   } catch (error) {
     console.error("❌ Migration failed:", error);
   }
+
+  // Migration 3: Add expire_time column to picker_sessions table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(picker_sessions)").all() as Array<{ name: string }>;
+    const hasExpireTime = tableInfo.some(col => col.name === "expire_time");
+    
+    if (!hasExpireTime) {
+      console.log("🔄 Running migration: Adding expire_time column to picker_sessions table");
+      db.exec("ALTER TABLE picker_sessions ADD COLUMN expire_time DATETIME");
+      console.log("✅ Migration completed: expire_time column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
 }
 
 /**
