@@ -176,6 +176,7 @@ export const Layout: FC<LayoutProps> = ({ title, children }) => {
             <li><a href="/ui/devices">Devices</a></li>
             <li><a href="/ui/images">Images</a></li>
             <li><a href="/ui/queues">Queues</a></li>
+            <li><a href="/ui/upload">Upload</a></li>
           </ul>
         </nav>
         <div class="container">

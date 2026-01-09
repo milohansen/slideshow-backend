@@ -4,6 +4,7 @@ import { Home } from "../views/home.tsx";
 import { Devices } from "../views/devices.tsx";
 import { Images } from "../views/images.tsx";
 import { Queues } from "../views/queues.tsx";
+import { Upload } from "../views/upload.tsx";
 
 const ui = new Hono();
 
@@ -136,6 +137,11 @@ ui.get("/queues", (c) => {
   });
 
   return c.html(<Queues queues={queues} />);
+});
+
+// Upload page
+ui.get("/upload", (c) => {
+  return c.html(<Upload />);
 });
 
 export default ui;

@@ -6,7 +6,7 @@ import { isGCSEnabled, uploadFile } from "./storage.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
-interface ImageMetadata {
+export interface ImageMetadata {
   filePath: string;
   fileHash: string;
   width: number;
@@ -88,7 +88,7 @@ function determineOrientation(width: number, height: number): "portrait" | "land
 /**
  * Extract metadata from an image file
  */
-async function extractImageMetadata(filePath: string): Promise<ImageMetadata> {
+export async function extractImageMetadata(filePath: string): Promise<ImageMetadata> {
   const [width, height] = await getImageDimensions(filePath);
   const fileHash = await calculateFileHash(filePath);
   const fileInfo = await Deno.stat(filePath);
