@@ -1,12 +1,49 @@
-import { Hono } from "hono";
-import { ingestImagesFromDirectory, getImageStats, extractImageMetadata } from "../services/image-ingestion.ts";
-import { processAllImages, loadConfig } from "../services/image-processing.ts";
 import { crypto } from "@std/crypto";
 import { join } from "@std/path";
-import { isGCSEnabled, uploadFile } from "../services/storage.ts";
+import { Hono } from "hono";
 import { getDb } from "../db/schema.ts";
+import { extractImageMetadata, getImageStats, ingestImagesFromDirectory } from "../services/image-ingestion.ts";
+import { processAllImages } from "../services/image-processing.ts";
+import { isGCSEnabled, uploadFile } from "../services/storage.ts";
 
 const admin = new Hono();
+
+/**
+ * Process an image for all device sizes in a web worker
+ */
+function processImageInBackground(imageId: string) {
+  const workerUrl = new URL("../workers/image-processor.ts", import.meta.url);
+  const worker = new Worker(workerUrl.href, {
+    type: "module",
+    deno: {
+      permissions: {
+        read: true,
+        write: true,
+        env: true,
+        net: true,
+        run: true,
+      },
+    },
+  });
+
+  worker.postMessage({
+    imageId,
+    outputDir: "data/processed",
+  });
+
+  worker.onmessage = (e: MessageEvent) => {
+    const { success, imageId, error } = e.data;
+    if (success) {
+      console.log(`✓ Worker completed processing for ${imageId}`);
+    } else {
+      console.error(`✗ Worker failed for ${imageId}:`, error);
+    }
+  };
+
+  worker.onerror = (e: ErrorEvent) => {
+    console.error(`Worker error for ${imageId}:`, e.message);
+  };
+}
 
 // Get image statistics
 admin.get("/stats", (c) => {
@@ -43,8 +80,7 @@ admin.post("/ingest", async (c) => {
 
 // Trigger image processing
 admin.post("/process", async (c) => {
-  const config = await loadConfig();
-  const outputDir = config.processedImageDirectory || "data/processed";
+  const outputDir = "data/processed";
 
   const result = await processAllImages(outputDir, {
     verbose: false,
@@ -144,6 +180,9 @@ admin.post("/upload", async (c) => {
           dimensions: `${metadata.width}x${metadata.height}`,
           orientation: metadata.orientation,
         });
+        
+        // Process image in background for all device sizes
+        processImageInBackground(imageId);
         
       } catch (error) {
         results.push({
