@@ -79,6 +79,35 @@ export async function initDatabase() {
     )
   `);
 
+  // Auth sessions table - stores OAuth tokens for authenticated users
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      user_id TEXT NOT NULL UNIQUE,
+      email TEXT,
+      name TEXT,
+      picture TEXT,
+      access_token TEXT NOT NULL,
+      refresh_token TEXT,
+      token_expiry DATETIME NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Picker sessions table - tracks Google Photos Picker sessions
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS picker_sessions (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      user_id TEXT NOT NULL,
+      picker_session_id TEXT NOT NULL,
+      picker_uri TEXT NOT NULL,
+      media_items_set BOOLEAN DEFAULT 0,
+      polling_config TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES auth_sessions(user_id) ON DELETE CASCADE
+    )
+  `);
+
   // Create indices for better query performance
   db.exec(`CREATE INDEX IF NOT EXISTS idx_images_orientation ON images(orientation)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_image_id ON processed_images(image_id)`);

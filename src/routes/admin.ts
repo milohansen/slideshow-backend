@@ -6,6 +6,14 @@ import { extractImageMetadata, getImageStats, ingestImagesFromDirectory } from "
 import { processAllImages } from "../services/image-processing.ts";
 import { isGCSEnabled, uploadFile } from "../services/storage.ts";
 import { queueImageProcessing, getWorkerQueue } from "../services/worker-queue.ts";
+import { getAccessToken, getUserId } from "../middleware/auth.ts";
+import {
+  createPickerSession,
+  getPickerSessionStatus,
+  updatePickerSession,
+  getPickerSessionFromDb,
+  getAllMediaItems,
+} from "../services/google-photos.ts";
 
 const admin = new Hono();
 
@@ -174,6 +182,148 @@ admin.post("/upload", async (c) => {
   } catch (error) {
     return c.json({
       error: error instanceof Error ? error.message : "Upload failed",
+    }, 500);
+  }
+});
+
+// Google Photos Picker API routes
+
+/**
+ * POST /api/admin/photos/picker/create
+ * Create a new Google Photos Picker session
+ */
+admin.post("/photos/picker/create", async (c) => {
+  const accessToken = getAccessToken(c);
+  const userId = getUserId(c);
+
+  if (!accessToken || !userId) {
+    return c.json({ error: "Not authenticated" }, 401);
+  }
+
+  try {
+    const session = await createPickerSession(accessToken, userId);
+
+    return c.json({
+      success: true,
+      sessionId: session.picker_session_id,
+      pickerUri: session.picker_uri,
+      pollingConfig: session.polling_config ? JSON.parse(session.polling_config) : null,
+    });
+  } catch (error) {
+    console.error("Failed to create picker session:", error);
+    return c.json({
+      error: error instanceof Error ? error.message : "Failed to create picker session",
+    }, 500);
+  }
+});
+
+/**
+ * GET /api/admin/photos/picker/:sessionId
+ * Get picker session status
+ */
+admin.get("/photos/picker/:sessionId", async (c) => {
+  const accessToken = getAccessToken(c);
+  const sessionId = c.req.param("sessionId");
+
+  if (!accessToken) {
+    return c.json({ error: "Not authenticated" }, 401);
+  }
+
+  try {
+    const status = await getPickerSessionStatus(accessToken, sessionId);
+
+    // Update local database
+    updatePickerSession(sessionId, status.mediaItemsSet);
+
+    return c.json({
+      success: true,
+      sessionId: status.id,
+      pickerUri: status.pickerUri,
+      mediaItemsSet: status.mediaItemsSet,
+      pollingConfig: status.pollingConfig,
+    });
+  } catch (error) {
+    console.error("Failed to get picker session status:", error);
+    return c.json({
+      error: error instanceof Error ? error.message : "Failed to get session status",
+    }, 500);
+  }
+});
+
+/**
+ * GET /api/admin/photos/picker/:sessionId/media
+ * List media items from picker session
+ */
+admin.get("/photos/picker/:sessionId/media", async (c) => {
+  const accessToken = getAccessToken(c);
+  const sessionId = c.req.param("sessionId");
+
+  if (!accessToken) {
+    return c.json({ error: "Not authenticated" }, 401);
+  }
+
+  try {
+    const mediaItems = await getAllMediaItems(accessToken, sessionId);
+
+    return c.json({
+      success: true,
+      count: mediaItems.length,
+      mediaItems: mediaItems.map(item => ({
+        id: item.mediaItemId,
+        filename: item.filename,
+        mediaType: item.mediaType,
+        mimeType: item.mimeType,
+        baseUrl: item.baseUrl,
+        productUrl: item.productUrl,
+        metadata: item.mediaMetadata,
+      })),
+    });
+  } catch (error) {
+    console.error("Failed to list media items:", error);
+    return c.json({
+      error: error instanceof Error ? error.message : "Failed to list media items",
+    }, 500);
+  }
+});
+
+/**
+ * POST /api/admin/photos/picker/:sessionId/ingest
+ * Ingest media items from picker session into slideshow
+ */
+admin.post("/photos/picker/:sessionId/ingest", async (c) => {
+  const accessToken = getAccessToken(c);
+  const sessionId = c.req.param("sessionId");
+
+  if (!accessToken) {
+    return c.json({ error: "Not authenticated" }, 401);
+  }
+
+  try {
+    // Get media items
+    const mediaItems = await getAllMediaItems(accessToken, sessionId);
+
+    // Filter for images only
+    const images = mediaItems.filter(item => item.mediaType === "IMAGE");
+
+    console.log(`📥 Starting ingestion of ${images.length} images from Google Photos`);
+
+    // Import from services/image-ingestion.ts - we'll extend this next
+    const { ingestFromGooglePhotos } = await import("../services/image-ingestion.ts");
+    
+    const results = await ingestFromGooglePhotos(images);
+
+    return c.json({
+      success: true,
+      total: images.length,
+      ingested: results.ingested,
+      skipped: results.skipped,
+      failed: results.failed,
+      details: results.details,
+    });
+  } catch (error) {
+    console.error("Failed to ingest media items:", error);
+    return c.json({
+      error: error instanceof Error ? error.message : "Failed to ingest media items",
     }, 500);
   }
 });

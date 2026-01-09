@@ -1,9 +1,11 @@
 import { crypto } from "@std/crypto";
 import { encodeHex } from "@std/encoding/hex";
 import { walk } from "@std/fs/walk";
+import { join } from "@std/path";
 import { getDb } from "../db/schema.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
 import { queueImageProcessing } from "./worker-queue.ts";
+import { downloadMediaItem, type MediaItem } from "./google-photos.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
@@ -277,4 +279,128 @@ export function getImageStats(): {
     total: total.count,
     byOrientation: orientationMap,
   };
+}
+
+/**
+ * Ingest images from Google Photos Picker API
+ */
+export async function ingestFromGooglePhotos(
+  mediaItems: MediaItem[]
+): Promise<{
+  ingested: number;
+  skipped: number;
+  failed: number;
+  details: Array<{ filename: string; status: string; error?: string }>;
+}> {
+  let ingested = 0;
+  let skipped = 0;
+  let failed = 0;
+  const details: Array<{ filename: string; status: string; error?: string }> = [];
+  const tempDir = "data/temp-google-photos";
+
+  // Create temporary directory
+  try {
+    await Deno.mkdir(tempDir, { recursive: true });
+  } catch {
+    // Directory already exists
+  }
+
+  console.log(`📥 Processing ${mediaItems.length} images from Google Photos`);
+
+  for (const item of mediaItems) {
+    try {
+      // Skip videos
+      if (item.mediaType !== "IMAGE") {
+        console.log(`  ⏭️  Skipped (video): ${item.filename}`);
+        details.push({ filename: item.filename, status: "skipped", error: "Not an image" });
+        skipped++;
+        continue;
+      }
+
+      console.log(`  📥 Downloading: ${item.filename}`);
+
+      // Download image from Google Photos (original size)
+      const imageData = await downloadMediaItem(item.baseUrl);
+
+      // Determine file extension from mime type
+      const ext = item.mimeType.split("/")[1] || "jpg";
+      const tempPath = join(tempDir, `${crypto.randomUUID()}.${ext}`);
+
+      // Save to temporary file
+      await Deno.writeFile(tempPath, imageData);
+
+      // Calculate hash to check for duplicates
+      const fileHash = await calculateFileHash(tempPath);
+
+      if (imageExists(fileHash)) {
+        console.log(`  ⏭️  Skipped (duplicate): ${item.filename}`);
+        details.push({ filename: item.filename, status: "skipped", error: "Duplicate" });
+        await Deno.remove(tempPath).catch(() => {});
+        skipped++;
+        continue;
+      }
+
+      // Extract metadata
+      const width = parseInt(item.mediaMetadata.width);
+      const height = parseInt(item.mediaMetadata.height);
+      const orientation = determineOrientation(width, height);
+      const creationTime = new Date(item.mediaMetadata.creationTime);
+
+      const imageId = generateImageId();
+      let storagePath = tempPath;
+
+      // Upload to GCS if enabled
+      if (isGCSEnabled()) {
+        try {
+          const gcsPath = `images/originals/${imageId}.${ext}`;
+          const gcsUri = await uploadFile(tempPath, gcsPath, item.mimeType);
+          storagePath = gcsUri;
+          console.log(`    ☁️  Uploaded to GCS: ${gcsUri}`);
+          
+          // Clean up local temp file after successful upload
+          await Deno.remove(tempPath).catch(() => {});
+        } catch (error) {
+          console.error(`    ⚠️  Failed to upload to GCS, using local path:`, error);
+        }
+      }
+
+      // Store in database
+      const db = getDb();
+      db.prepare(`
+        INSERT INTO images (
+          id, file_path, file_hash, width, height, orientation, processing_status, last_modified
+        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+      `).run(
+        imageId,
+        storagePath,
+        fileHash,
+        width,
+        height,
+        orientation,
+        creationTime.toISOString()
+      );
+
+      // Queue for processing
+      queueImageProcessing(imageId);
+
+      console.log(`  ✅ Ingested: ${item.filename} (${width}x${height}, ${orientation})`);
+      details.push({ filename: item.filename, status: "success" });
+      ingested++;
+    } catch (error) {
+      console.error(`  ❌ Failed to ingest ${item.filename}:`, error);
+      details.push({
+        filename: item.filename,
+        status: "failed",
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+      failed++;
+    }
+  }
+
+  console.log(`\n✅ Google Photos import complete:`);
+  console.log(`   Ingested: ${ingested}`);
+  console.log(`   Skipped: ${skipped}`);
+  console.log(`   Failed: ${failed}`);
+
+  return { ingested, skipped, failed, details };
 }

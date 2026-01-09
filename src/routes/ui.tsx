@@ -5,6 +5,9 @@ import { Devices } from "../views/devices.tsx";
 import { Images } from "../views/images.tsx";
 import { Queues } from "../views/queues.tsx";
 import { Upload } from "../views/upload.tsx";
+import { PhotosPicker } from "../views/photos-picker.tsx";
+import { getPickerSessionFromDb } from "../services/google-photos.ts";
+import { getUserId } from "../middleware/auth.ts";
 
 const ui = new Hono();
 
@@ -223,6 +226,28 @@ ui.get("/thumbnails/:imageId", async (c) => {
     console.error(`Failed to serve thumbnail ${imageId}:`, error);
     return c.notFound();
   }
+});
+
+// Google Photos Picker page
+ui.get("/photos-picker", async (c) => {
+  const userId = getUserId(c);
+  
+  if (!userId) {
+    // Not authenticated, redirect to login
+    return c.redirect("/auth/google");
+  }
+
+  // Check if there's an active picker session for this user
+  const db = getDb();
+  const session = db.prepare(`
+    SELECT picker_session_id, picker_uri 
+    FROM picker_sessions 
+    WHERE user_id = ? 
+    ORDER BY created_at DESC 
+    LIMIT 1
+  `).get(userId) as { picker_session_id: string; picker_uri: string } | undefined;
+
+  return c.html(<PhotosPicker session={session ? { sessionId: session.picker_session_id, pickerUri: session.picker_uri } : null} />);
 });
 
 export default ui;

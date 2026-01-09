@@ -8,6 +8,8 @@ import { crypto } from "@std/crypto";
 import deviceRoutes from "./routes/devices.ts";
 import adminRoutes from "./routes/admin.ts";
 import uiRoutes from "./routes/ui.tsx";
+import authRoutes from "./routes/auth.ts";
+import { requireAuth, optionalAuth } from "./middleware/auth.ts";
 
 const app = new Hono();
 
@@ -91,8 +93,17 @@ app.get("/_health", (c) => {
 });
 
 // Routes
+app.route("/auth", authRoutes);
+
+// Public UI routes (with optional auth for better UX)
+app.use("/ui/*", optionalAuth);
 app.route("/ui", uiRoutes);
+
+// Device API routes (public for now - devices authenticate via device ID)
 app.route("/api/devices", deviceRoutes);
+
+// Protected admin routes (require authentication)
+app.use("/api/admin/*", requireAuth);
 app.route("/api/admin", adminRoutes);
 
 // Redirect root to UI

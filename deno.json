@@ -1,7 +1,7 @@
 {
   "tasks": {
-    "dev": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --watch src/main.ts",
-    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi src/main.ts",
+    "dev": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run --watch src/main.ts",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
     "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts",
     "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts"
   },
@@ -13,7 +13,8 @@
     "@std/path": "jsr:@std/path@^1.0.8",
     "@std/cli": "jsr:@std/cli@^1.0.9",
     "@std/crypto": "jsr:@std/crypto@^1.0.3",
-    "@std/encoding": "jsr:@std/encoding@^1.0.5"
+    "@std/encoding": "jsr:@std/encoding@^1.0.5",
+    "arctic": "npm:arctic@^1.9.2"
   },
   "compilerOptions": {
     "jsx": "precompile",
