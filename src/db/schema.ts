@@ -82,10 +82,32 @@ export async function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_image_id ON processed_images(image_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_device_size ON processed_images(device_size)`);
 
+  // Run migrations for schema updates
+  runMigrations(db);
+
   // Initialize with default devices if table is empty
   initializeDefaultDevices(db);
 
   console.log("✅ Database initialized");
+}
+
+/**
+ * Run schema migrations for existing databases
+ */
+function runMigrations(db: Database): void {
+  // Migration 1: Add thumbnail_path column to images table if it doesn't exist
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasThumbnailPath = tableInfo.some(col => col.name === "thumbnail_path");
+    
+    if (!hasThumbnailPath) {
+      console.log("🔄 Running migration: Adding thumbnail_path column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN thumbnail_path TEXT");
+      console.log("✅ Migration completed: thumbnail_path column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
 }
 
 /**

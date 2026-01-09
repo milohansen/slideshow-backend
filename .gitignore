@@ -28,3 +28,4 @@ data/processed/
 
 # Node modules (if needed for any tools)
 node_modules/
+client_secret.json
