@@ -3,6 +3,7 @@ import { encodeHex } from "@std/encoding/hex";
 import { walk } from "@std/fs/walk";
 import { getDb } from "../db/schema.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
+import { queueImageProcessing } from "./worker-queue.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
@@ -172,17 +173,19 @@ export async function ingestImagesFromDirectory(
   options: {
     recursive?: boolean;
     verbose?: boolean;
+    autoProcess?: boolean;
   } = {}
 ): Promise<{
   processed: number;
   skipped: number;
   errors: number;
 }> {
-  const { recursive = true, verbose = false } = options;
+  const { recursive = true, verbose = false, autoProcess = true } = options;
 
   let processed = 0;
   let skipped = 0;
   let errors = 0;
+  const ingestedImageIds: string[] = [];
 
   try {
     for await (const entry of walk(directoryPath, {
@@ -222,6 +225,7 @@ export async function ingestImagesFromDirectory(
           console.log(`  ✓ Ingested: ${entry.path} (${metadata.width}x${metadata.height}, ${metadata.orientation})`);
         }
         processed++;
+        ingestedImageIds.push(imageId);
       } catch (error) {
         console.error(`Error processing ${entry.path}:`, error);
         errors++;
@@ -230,6 +234,13 @@ export async function ingestImagesFromDirectory(
   } catch (error) {
     console.error(`Error scanning directory ${directoryPath}:`, error);
     throw error;
+  }
+
+  // Queue processing for newly ingested images
+  if (autoProcess && ingestedImageIds.length > 0) {
+    for (const imageId of ingestedImageIds) {
+      queueImageProcessing(imageId);
+    }
   }
 
   return { processed, skipped, errors };

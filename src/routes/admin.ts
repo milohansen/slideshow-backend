@@ -5,51 +5,18 @@ import { getDb } from "../db/schema.ts";
 import { extractImageMetadata, getImageStats, ingestImagesFromDirectory } from "../services/image-ingestion.ts";
 import { processAllImages } from "../services/image-processing.ts";
 import { isGCSEnabled, uploadFile } from "../services/storage.ts";
+import { queueImageProcessing, getWorkerQueue } from "../services/worker-queue.ts";
 
 const admin = new Hono();
-
-/**
- * Process an image for all device sizes in a web worker
- */
-function processImageInBackground(imageId: string) {
-  const workerUrl = new URL("../workers/image-processor.ts", import.meta.url);
-  const worker = new Worker(workerUrl.href, {
-    type: "module",
-    deno: {
-      permissions: {
-        read: true,
-        write: true,
-        env: true,
-        net: true,
-        run: true,
-        ffi: true,
-      },
-    },
-  });
-
-  worker.postMessage({
-    imageId,
-    outputDir: "data/processed",
-  });
-
-  worker.onmessage = (e: MessageEvent) => {
-    const { success, imageId, error } = e.data;
-    if (success) {
-      console.log(`✓ Worker completed processing for ${imageId}`);
-    } else {
-      console.error(`✗ Worker failed for ${imageId}:`, error);
-    }
-  };
-
-  worker.onerror = (e: ErrorEvent) => {
-    console.error(`Worker error for ${imageId}:`, e.message);
-  };
-}
 
 // Get image statistics
 admin.get("/stats", (c) => {
   const stats = getImageStats();
-  return c.json(stats);
+  const queueStats = getWorkerQueue().getStatus();
+  return c.json({
+    ...stats,
+    processing: queueStats,
+  });
 });
 
 // Trigger image ingestion
@@ -182,8 +149,8 @@ admin.post("/upload", async (c) => {
           orientation: metadata.orientation,
         });
         
-        // Process image in background for all device sizes
-        processImageInBackground(imageId);
+        // Queue image processing for all device sizes
+        queueImageProcessing(imageId);
         
       } catch (error) {
         results.push({

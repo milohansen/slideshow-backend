@@ -1,45 +1,34 @@
 /**
- * Web Worker for processing images in the background
+ * Web Worker for processing a single image for a single device size
+ * One task per worker for better parallelism
  */
 
-import { processImageForDevice, loadConfig } from "../services/image-processing.ts";
+import { processImageForDevice, type DeviceSize } from "../services/image-processing.ts";
 
 self.onmessage = async (e: MessageEvent) => {
-  const { imageId, outputDir } = e.data;
+  const { imageId, deviceName, deviceWidth, deviceHeight, outputDir } = e.data;
   
   try {
-    const config = await loadConfig();
-    const results = [];
+    const deviceSize: DeviceSize = {
+      name: deviceName,
+      width: deviceWidth,
+      height: deviceHeight,
+    };
     
-    for (const deviceSize of config.deviceSizes) {
-      try {
-        // Process image: resize for device, extract color palette, and generate thumbnail
-        await processImageForDevice(imageId, deviceSize, outputDir);
-        results.push({
-          deviceSize: deviceSize.name,
-          success: true,
-        });
-        console.log(`✓ Processed ${imageId} for ${deviceSize.name} (resized + colors + thumbnail)`);
-      } catch (error) {
-        results.push({
-          deviceSize: deviceSize.name,
-          success: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-        console.error(`✗ Failed to process ${imageId} for ${deviceSize.name}:`, error);
-      }
-    }
+    // Process image for this specific device size
+    await processImageForDevice(imageId, deviceSize, outputDir);
     
     self.postMessage({
       success: true,
       imageId,
-      results,
+      deviceName,
     });
   } catch (error) {
-    console.error(`Failed to process image ${imageId}:`, error);
+    console.error(`✗ Failed to process ${imageId} for ${deviceName}:`, error);
     self.postMessage({
       success: false,
       imageId,
+      deviceName,
       error: error instanceof Error ? error.message : "Unknown error",
     });
   } finally {

@@ -14,7 +14,7 @@ const app = new Hono();
 /**
  * Process any images that haven't been processed for all device sizes
  */
-function processUnprocessedImages() {
+async function processUnprocessedImages() {
   try {
     const db = getDb();
     
@@ -37,36 +37,9 @@ function processUnprocessedImages() {
     if (unprocessedImages.length > 0) {
       console.log(`📸 Found ${unprocessedImages.length} images to process on startup`);
       
+      const { queueImageProcessing } = await import("./services/worker-queue.ts");
       for (const image of unprocessedImages) {
-        const workerUrl = new URL("./workers/image-processor.ts", import.meta.url);
-        const worker = new Worker(workerUrl.href, {
-          type: "module",
-          deno: {
-            permissions: {
-              read: true,
-              write: true,
-              env: true,
-              net: true,
-              run: true,
-            },
-          },
-        });
-
-        worker.postMessage({
-          imageId: image.id,
-          outputDir: "data/processed",
-        });
-
-        worker.onmessage = (e: MessageEvent) => {
-          const { success, imageId } = e.data;
-          if (success) {
-            console.log(`✓ Startup processing completed for ${imageId}`);
-          }
-        };
-
-        worker.onerror = (e: ErrorEvent) => {
-          console.error(`✗ Startup worker error:`, e.message);
-        };
+        queueImageProcessing(image.id);
       }
     }
   } catch (error) {

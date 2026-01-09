@@ -206,8 +206,9 @@ async function resizeImage(
 
 /**
  * Generate thumbnail for UI display
+ * Exported for use by worker-queue
  */
-async function generateThumbnail(
+export async function generateThumbnail(
   sourcePath: string,
   imageId: string
 ): Promise<string> {
@@ -286,16 +287,6 @@ export async function processImageForDevice(
       ...existing,
       colorPalette: JSON.parse(existing.colorPalette as unknown as string),
     };
-  }
-
-  // Generate thumbnail if not already created
-  if (!image.thumbnail_path) {
-    try {
-      const thumbnailPath = await generateThumbnail(image.file_path, imageId);
-      db.prepare("UPDATE images SET thumbnail_path = ? WHERE id = ?").run(thumbnailPath, imageId);
-    } catch (error) {
-      console.error(`Failed to generate thumbnail for ${imageId}:`, error);
-    }
   }
 
   // Generate output path
