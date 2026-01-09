@@ -4,6 +4,7 @@ import { cors } from "hono/cors";
 import { initDatabase } from "./db/schema.ts";
 import deviceRoutes from "./routes/devices.ts";
 import adminRoutes from "./routes/admin.ts";
+import uiRoutes from "./routes/ui.tsx";
 
 const app = new Hono();
 
@@ -15,16 +16,14 @@ app.use("*", cors());
 await initDatabase();
 
 // Routes
-app.get("/", (c) => {
-  return c.json({
-    name: "ESPHome Photo Slideshow Backend",
-    version: "1.0.0",
-    status: "running",
-  });
-});
-
+app.route("/ui", uiRoutes);
 app.route("/api/devices", deviceRoutes);
 app.route("/api/admin", adminRoutes);
+
+// Redirect root to UI
+app.get("/", (c) => {
+  return c.redirect("/ui");
+});
 
 // Start server
 const port = Number(Deno.env.get("PORT")) || 8000;

@@ -9,6 +9,7 @@ export function getDb(): Database {
   return db;
 }
 
+// deno-lint-ignore require-await
 export async function initDatabase() {
   db = new Database("slideshow.db");
 

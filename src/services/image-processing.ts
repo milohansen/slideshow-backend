@@ -142,7 +142,7 @@ async function resizeImage(
       "-resize", `${width}x${height}^`,
       "-gravity", "center",
       "-extent", `${width}x${height}`,
-      "-quality", "85",
+      "-quality", "90",
       outputPath
     ],
     stdout: "piped",
