@@ -41,13 +41,13 @@ export const PhotosPicker: FC<PhotosPickerProps> = ({ session, error }) => {
               <p><strong>Session ID:</strong> {session.sessionId}</p>
               
               <div class="picker-actions">
-                <a 
-                  href={session.pickerUri} 
-                  target="_blank" 
+                <button 
+                  id="open-picker-btn"
                   class="button button-primary"
+                  data-picker-uri={session.pickerUri}
                 >
                   Open Google Photos Picker
-                </a>
+                </button>
                 <button id="check-status-btn" class="button button-secondary">
                   Check Status
                 </button>

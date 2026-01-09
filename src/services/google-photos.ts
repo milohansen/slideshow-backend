@@ -12,26 +12,40 @@ export interface PickerSession {
   created_at: string;
 }
 
-export interface MediaItem {
-  mediaItemId: string;
-  filename: string;
-  mediaType: "IMAGE" | "VIDEO";
-  mimeType: string;
+type PhotoMetadata = {
+  focalLength?: number;
+  apertureFNumber?: number;
+  isoEquivalent?: number;
+  exposureTime?: string;
+};
+
+type VideoMetadata = {
+  fps?: number;
+  processingStatus?: "UNSPECIFIED" | "PROCESSING" | "READY" | "FAILED";
+};
+
+type MediaFileMetadata = {
+  width: number;
+  height: number;
+  cameraMake?: string;
+  cameraModel?: string;
+  photoMetadata?: PhotoMetadata;
+  videoMetadata?: VideoMetadata;
+};
+
+type MediaFile = {
   baseUrl: string;
-  productUrl: string;
-  mediaMetadata: {
-    creationTime: string;
-    width: string;
-    height: string;
-    photo?: {
-      cameraMake?: string;
-      cameraModel?: string;
-      focalLength?: number;
-      apertureFNumber?: number;
-      isoEquivalent?: number;
-    };
-  };
-}
+  mimeType: string;
+  filename: string;
+  mediaFileMetadata: MediaFileMetadata;
+};
+
+export type PickedMediaItem = {
+  id: string;
+  createTime: string;
+  type: "TYPE_UNSPECIFIED" | "PHOTO" | "VIDEO";
+  mediaFile: MediaFile;
+};
 
 /**
  * Create a new Google Photos Picker session
@@ -62,6 +76,9 @@ export async function createPickerSession(
   // Store session in database
   const db = getDb();
   const pollingConfig = data.pollingConfig ? JSON.stringify(data.pollingConfig) : null;
+  
+  // Append /autoclose to pickerUri to automatically close after selection
+  const pickerUri = data.pickerUri + '/autoclose';
 
   const result = db.prepare(`
     INSERT INTO picker_sessions (user_id, picker_session_id, picker_uri, media_items_set, polling_config, expire_time)
@@ -70,7 +87,7 @@ export async function createPickerSession(
   `).get(
     userId,
     data.id,
-    data.pickerUri,
+    pickerUri,
     false,
     pollingConfig,
     data.expireTime || null
@@ -147,7 +164,7 @@ export async function listMediaItems(
   pageSize = 100,
   pageToken?: string
 ): Promise<{
-  mediaItems: MediaItem[];
+  mediaItems: PickedMediaItem[];
   nextPageToken?: string;
 }> {
   const params = new URLSearchParams({
@@ -174,6 +191,7 @@ export async function listMediaItems(
   }
 
   const data = await response.json();
+  console.log("listMediaItems", "data", data);
 
   return {
     mediaItems: data.mediaItems || [],
@@ -187,8 +205,8 @@ export async function listMediaItems(
 export async function getAllMediaItems(
   accessToken: string,
   pickerSessionId: string
-): Promise<MediaItem[]> {
-  const allItems: MediaItem[] = [];
+): Promise<PickedMediaItem[]> {
+  const allItems: PickedMediaItem[] = [];
   let pageToken: string | undefined;
 
   do {

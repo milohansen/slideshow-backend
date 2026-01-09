@@ -225,15 +225,15 @@ admin.get("/photos/picker/:sessionId", async (c) => {
     const status = await getPickerSessionStatus(accessToken, sessionId);
 
     // If pickerUri is missing, the session has expired
-    if (!status.pickerUri) {
-      console.log(`⏰ Session ${sessionId} has expired (no pickerUri)`);
-      deletePickerSession(sessionId);
-      return c.json({
-        success: false,
-        expired: true,
-        error: "Session has expired. Please create a new session.",
-      }, 410); // 410 Gone
-    }
+    // if (!status.pickerUri) {
+    //   console.log(`⏰ Session ${sessionId} has expired (no pickerUri)`);
+    //   deletePickerSession(sessionId);
+    //   return c.json({
+    //     success: false,
+    //     expired: true,
+    //     error: "Session has expired. Please create a new session.",
+    //   }, 410); // 410 Gone
+    // }
 
     // Update local database
     updatePickerSession(sessionId, status.mediaItemsSet);
@@ -281,19 +281,12 @@ admin.get("/photos/picker/:sessionId/media", async (c) => {
     }
 
     const mediaItems = await getAllMediaItems(accessToken, sessionId);
+    console.log("/photos/picker/:sessionId/media", "mediaItems", mediaItems);
 
     return c.json({
       success: true,
       count: mediaItems.length,
-      mediaItems: mediaItems.map((item) => ({
-        id: item.mediaItemId,
-        filename: item.filename,
-        mediaType: item.mediaType,
-        mimeType: item.mimeType,
-        baseUrl: item.baseUrl,
-        productUrl: item.productUrl,
-        metadata: item.mediaMetadata,
-      })),
+      mediaItems,
     });
   } catch (error) {
     console.error("Failed to list media items:", error);
@@ -335,7 +328,7 @@ admin.post("/photos/picker/:sessionId/ingest", async (c) => {
     const mediaItems = await getAllMediaItems(accessToken, sessionId);
 
     // Filter for images only
-    const images = mediaItems.filter((item) => item.mediaType === "IMAGE");
+    const images = mediaItems.filter((item) => item.type === "PHOTO");
 
     console.log(`📥 Starting ingestion of ${images.length} images from Google Photos`);
 
@@ -344,9 +337,11 @@ admin.post("/photos/picker/:sessionId/ingest", async (c) => {
 
     const results = await ingestFromGooglePhotos(images);
 
-    // Clean up the session now that we've ingested the media
-    // Sessions expire shortly after media selection per Google's docs
-    deletePickerSession(sessionId);
+    // Note: We don't delete the session here - let it expire naturally via Google's API
+    // This allows users to re-import if needed or view what was imported
+    // The session will be cleaned up when:
+    // 1. Google's API no longer returns pickerUri (detected during status polling)
+    // 2. The expire_time is reached (cleaned up by cleanupExpiredSessions)
 
     return c.json({
       success: true,
@@ -407,12 +402,12 @@ admin.delete("/images/delete-all", async (c) => {
       }
     }
     
-    console.log(`🗑️  Deleted ${deletedImages.changes} images and ${deletedProcessed.changes} processed versions`);
+    console.log(`🗑️  Deleted ${deletedImages} images and ${deletedProcessed} processed versions`);
     
     return c.json({
       success: true,
-      deleted: deletedImages.changes,
-      processedDeleted: deletedProcessed.changes,
+      deleted: deletedImages,
+      processedDeleted: deletedProcessed,
     });
   } catch (error) {
     console.error("Failed to delete all images:", error);

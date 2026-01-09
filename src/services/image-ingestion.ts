@@ -5,7 +5,7 @@ import { join } from "@std/path";
 import { getDb } from "../db/schema.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
 import { queueImageProcessing } from "./worker-queue.ts";
-import { downloadMediaItem, type MediaItem } from "./google-photos.ts";
+import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
@@ -285,7 +285,7 @@ export function getImageStats(): {
  * Ingest images from Google Photos Picker API
  */
 export async function ingestFromGooglePhotos(
-  mediaItems: MediaItem[]
+  mediaItems: PickedMediaItem[]
 ): Promise<{
   ingested: number;
   skipped: number;
@@ -310,20 +310,20 @@ export async function ingestFromGooglePhotos(
   for (const item of mediaItems) {
     try {
       // Skip videos
-      if (item.mediaType !== "IMAGE") {
-        console.log(`  ⏭️  Skipped (video): ${item.filename}`);
-        details.push({ filename: item.filename, status: "skipped", error: "Not an image" });
+      if (item.type !== "PHOTO") {
+        console.log(`  ⏭️  Skipped (video): ${item.mediaFile.filename}`);
+        details.push({ filename: item.mediaFile.filename, status: "skipped", error: "Not an image" });
         skipped++;
         continue;
       }
 
-      console.log(`  📥 Downloading: ${item.filename}`);
+      console.log(`  📥 Downloading: ${item.mediaFile.filename}`);
 
       // Download image from Google Photos (original size)
-      const imageData = await downloadMediaItem(item.baseUrl);
+      const imageData = await downloadMediaItem(item.mediaFile.baseUrl);
 
       // Determine file extension from mime type
-      const ext = item.mimeType.split("/")[1] || "jpg";
+      const ext = item.mediaFile.mimeType.split("/")[1] || "jpg";
       const tempPath = join(tempDir, `${crypto.randomUUID()}.${ext}`);
 
       // Save to temporary file
@@ -333,18 +333,18 @@ export async function ingestFromGooglePhotos(
       const fileHash = await calculateFileHash(tempPath);
 
       if (imageExists(fileHash)) {
-        console.log(`  ⏭️  Skipped (duplicate): ${item.filename}`);
-        details.push({ filename: item.filename, status: "skipped", error: "Duplicate" });
+        console.log(`  ⏭️  Skipped (duplicate): ${item.mediaFile.filename}`);
+        details.push({ filename: item.mediaFile.filename, status: "skipped", error: "Duplicate" });
         await Deno.remove(tempPath).catch(() => {});
         skipped++;
         continue;
       }
 
       // Extract metadata
-      const width = parseInt(item.mediaMetadata.width);
-      const height = parseInt(item.mediaMetadata.height);
+      const width = item.mediaFile.mediaFileMetadata.width;
+      const height = item.mediaFile.mediaFileMetadata.height;
       const orientation = determineOrientation(width, height);
-      const creationTime = new Date(item.mediaMetadata.creationTime);
+      const creationTime = new Date(item.createTime);
 
       const imageId = generateImageId();
       let storagePath = tempPath;
@@ -353,7 +353,7 @@ export async function ingestFromGooglePhotos(
       if (isGCSEnabled()) {
         try {
           const gcsPath = `images/originals/${imageId}.${ext}`;
-          const gcsUri = await uploadFile(tempPath, gcsPath, item.mimeType);
+          const gcsUri = await uploadFile(tempPath, gcsPath, item.mediaFile.mimeType);
           storagePath = gcsUri;
           console.log(`    ☁️  Uploaded to GCS: ${gcsUri}`);
           

@@ -160,10 +160,10 @@ async function loadMediaItems() {
     
     const items = itemsToShow.map(item => {
       return '<div class="media-item">' +
-        '<img src="' + item.baseUrl + '=w400-h400" alt="' + item.filename + '" />' +
+        '<img src="' + item.mediaFile.baseUrl + '=w400-h400" alt="' + item.mediaFile.filename + '" />' +
         '<div class="media-item-info">' +
-        '<div>' + item.filename + '</div>' +
-        '<div>' + item.metadata.width + ' × ' + item.metadata.height + '</div>' +
+        '<div>' + item.mediaFile.filename + '</div>' +
+        '<div>' + item.mediaFile.mediaFileMetadata.width + ' × ' + item.mediaFile.mediaFileMetadata.height + '</div>' +
         '</div></div>';
     }).join("");
     
@@ -189,6 +189,45 @@ function setupCheckButton() {
       // Start polling at configured interval
       if (!pollInterval) {
         pollInterval = setInterval(checkStatus, pollIntervalMs);
+      }
+    });
+  }
+}
+
+// Open picker button - creates new session if pickerUri is missing
+function setupOpenPickerButton() {
+  const openPickerBtn = document.getElementById("open-picker-btn");
+  if (openPickerBtn) {
+    openPickerBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      
+      const pickerUri = openPickerBtn.getAttribute('data-picker-uri');
+      
+      // If we have a valid pickerUri, just open it
+      if (pickerUri && pickerUri !== 'null' && pickerUri !== '') {
+        window.open(pickerUri, '_blank');
+        return;
+      }
+      
+      // Otherwise, create a new session first
+      openPickerBtn.disabled = true;
+      openPickerBtn.textContent = "Creating new session...";
+      
+      try {
+        const response = await fetch("/api/admin/photos/picker/create", {
+          method: "POST",
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to create session");
+        }
+
+        // Reload page with new session
+        window.location.reload();
+      } catch (error) {
+        alert("Failed to create new session: " + error.message);
+        openPickerBtn.disabled = false;
+        openPickerBtn.textContent = "Open Google Photos Picker";
       }
     });
   }
@@ -264,6 +303,7 @@ function setupIngestButton() {
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
   setupCreateButton();
+  setupOpenPickerButton();
   setupCheckButton();
   setupNewSessionButton();
   setupIngestButton();
