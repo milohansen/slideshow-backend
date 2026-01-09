@@ -2,7 +2,8 @@
   "tasks": {
     "dev": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --watch src/main.ts",
     "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi src/main.ts",
-    "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts"
+    "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts",
+    "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts"
   },
   "imports": {
     "hono": "jsr:@hono/hono@^4.6.14",

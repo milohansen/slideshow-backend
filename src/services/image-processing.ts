@@ -32,12 +32,35 @@ interface ProcessedImageData {
 }
 
 /**
- * Load configuration settings
+ * Load configuration settings from database
  */
 export async function loadConfig() {
-  const configPath = "config/settings.json";
-  const configText = await Deno.readTextFile(configPath);
-  return JSON.parse(configText);
+  const db = getDb();
+  
+  // Get all registered devices from the database
+  const devices = db.prepare(`
+    SELECT name, width, height, orientation
+    FROM devices
+    ORDER BY name
+  `).all() as Array<{
+    name: string;
+    width: number;
+    height: number;
+    orientation: string;
+  }>;
+
+  if (devices.length === 0) {
+    throw new Error("No devices registered in database. Please register devices first.");
+  }
+
+  // Convert to DeviceSize format
+  const deviceSizes: DeviceSize[] = devices.map(d => ({
+    name: d.name,
+    width: d.width,
+    height: d.height,
+  }));
+
+  return { deviceSizes };
 }
 
 /**
