@@ -13,6 +13,12 @@ export function getDb(): Database {
 export async function initDatabase() {
   db = new Database("slideshow.db");
 
+  // Enable WAL mode for better concurrency and crash recovery
+  db.exec("PRAGMA journal_mode=WAL");
+  db.exec("PRAGMA synchronous=NORMAL");
+  db.exec("PRAGMA wal_autocheckpoint=1000");
+  db.exec("PRAGMA busy_timeout=5000");
+
   // Images table - stores original image metadata
   db.exec(`
     CREATE TABLE IF NOT EXISTS images (

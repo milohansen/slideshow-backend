@@ -101,12 +101,44 @@ When `GCS_BUCKET_NAME` is set:
 - All images are stored in Google Cloud Storage
 - Original images: `gs://bucket/images/originals/`
 - Processed images: `gs://bucket/images/processed/`
+- Database synced to: `gs://bucket/database/slideshow.db`
 - Local files are automatically cleaned up after GCS upload
 - Authentication uses Application Default Credentials (automatic in Cloud Run)
 
 When `GCS_BUCKET_NAME` is not set:
 - Images are stored in local filesystem (development only)
 - Not recommended for Cloud Run (ephemeral filesystem)
+
+### Database Persistence
+
+Cloud Run instances have ephemeral filesystems. The SQLite database is automatically synced to GCS:
+
+**Sync Strategy:**
+- Database downloaded from GCS on startup
+- Synced to GCS every 30 seconds (only if modified)
+- Final sync on graceful shutdown (SIGTERM)
+- SQLite WAL mode tracks changes between syncs
+
+**Single-Writer Architecture:**
+- Uses GCS lease mechanism to ensure only one instance writes
+- Lease timeout: 60 seconds with automatic renewal
+- Non-writer instances run in read-only mode
+- Automatic failover if writer crashes
+
+**Storage Location:**
+- Database: `gs://bucket/database/slideshow.db`
+- Write-ahead log: `gs://bucket/database/slideshow.db-wal`
+- Lease file: `gs://bucket/database/db-lease.json`
+
+**Recommended Settings:**
+```bash
+gcloud run services update slideshow-backend \
+  --region us-central1 \
+  --min-instances 1 \
+  --max-instances 1
+```
+
+Note: For single-writer architecture, keep max-instances=1 to ensure consistency. For multi-instance deployments, only one instance will write while others serve read-only traffic.
 
 ### Memory and CPU
 
