@@ -119,20 +119,14 @@ function runMigrations(db: Database): void {
     
     if (!hasProcessingStatus) {
       console.log("🔄 Running migration: Adding processing_status column to images table");
-      db.exec("ALTER TABLE images ADD COLUMN processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed'))");
-      
-      // Set existing images to 'failed' status so they can be retried
-      const updatedCount = db.prepare("UPDATE images SET processing_status = 'failed', processing_error = 'Migration: status unknown' WHERE processing_status IS NULL OR processing_status = 'pending'").run();
-      if (updatedCount.changes > 0) {
-        console.log(`  ℹ️  Set ${updatedCount.changes} existing images to 'failed' status`);
-      }
+      db.exec("ALTER TABLE images ADD COLUMN processing_status TEXT DEFAULT 'failed' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed'))");
       
       console.log("✅ Migration completed: processing_status column added");
     }
     
     if (!hasProcessingError) {
       console.log("🔄 Running migration: Adding processing_error column to images table");
-      db.exec("ALTER TABLE images ADD COLUMN processing_error TEXT");
+      db.exec("ALTER TABLE images ADD COLUMN processing_error TEXT DEFAULT 'Migration: status unknown'");
       console.log("✅ Migration completed: processing_error column added");
     }
   } catch (error) {
