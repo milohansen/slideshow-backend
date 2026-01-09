@@ -67,6 +67,7 @@ ui.get("/images", (c) => {
     SELECT 
       i.id,
       i.file_path,
+      i.thumbnail_path,
       i.width,
       i.height,
       i.orientation,
@@ -80,6 +81,7 @@ ui.get("/images", (c) => {
   `).all() as Array<{
     id: string;
     file_path: string;
+    thumbnail_path: string | null;
     width: number;
     height: number;
     orientation: string;
@@ -91,6 +93,7 @@ ui.get("/images", (c) => {
   const imagesWithColors = images.map(img => ({
     id: img.id,
     file_path: img.file_path,
+    thumbnail_path: img.thumbnail_path,
     width: img.width,
     height: img.height,
     orientation: img.orientation,
@@ -142,6 +145,44 @@ ui.get("/queues", (c) => {
 // Upload page
 ui.get("/upload", (c) => {
   return c.html(<Upload />);
+});
+
+// Serve thumbnail images
+ui.get("/thumbnails/:imageId", async (c) => {
+  const imageId = c.req.param("imageId");
+  const db = getDb();
+  
+  const image = db.prepare(
+    "SELECT thumbnail_path FROM images WHERE id = ?"
+  ).get(imageId) as { thumbnail_path: string | null } | undefined;
+  
+  if (!image || !image.thumbnail_path) {
+    return c.notFound();
+  }
+  
+  try {
+    let imageData: Uint8Array;
+    
+    // Check if file is in GCS or local
+    if (image.thumbnail_path.startsWith("gs://")) {
+      const { downloadFile } = await import("../services/storage.ts");
+      const gcsPath = image.thumbnail_path.replace(/^gs:\/\/[^/]+\//, "");
+      const tempPath = await Deno.makeTempFile({ suffix: ".jpg" });
+      await downloadFile(gcsPath, tempPath);
+      imageData = await Deno.readFile(tempPath);
+      await Deno.remove(tempPath);
+    } else {
+      imageData = await Deno.readFile(image.thumbnail_path);
+    }
+    
+    return c.body(imageData, 200, {
+      "Content-Type": "image/jpeg",
+      "Cache-Control": "public, max-age=31536000",
+    });
+  } catch (error) {
+    console.error(`Failed to serve thumbnail ${imageId}:`, error);
+    return c.notFound();
+  }
 });
 
 export default ui;
