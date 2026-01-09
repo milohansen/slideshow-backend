@@ -367,4 +367,62 @@ admin.post("/photos/picker/:sessionId/ingest", async (c) => {
   }
 });
 
+/**
+ * DELETE /api/admin/images/delete-all
+ * Delete all images and their processed versions (for debugging)
+ */
+admin.delete("/images/delete-all", async (c) => {
+  try {
+    const db = getDb();
+    
+    // Get all image file paths before deleting
+    const images = db.prepare("SELECT id, file_path FROM images").all() as Array<{ id: string; file_path: string }>;
+    
+    // Delete from database first
+    const deletedImages = db.prepare("DELETE FROM images").run();
+    const deletedProcessed = db.prepare("DELETE FROM processed_images").run();
+    
+    // Clean up files (best effort - don't fail if files don't exist)
+    for (const image of images) {
+      try {
+        // Skip GCS URIs
+        if (image.file_path.startsWith("gs://")) {
+          continue;
+        }
+        
+        // Delete original file
+        await Deno.remove(image.file_path).catch(() => {});
+        
+        // Delete processed files for all device sizes
+        const processedBase = `data/processed`;
+        for (const size of ["small-portrait", "small-landscape", "medium-portrait", "medium-landscape", "large-landscape"]) {
+          await Deno.remove(join(processedBase, size, `${image.id}.jpg`)).catch(() => {});
+        }
+        
+        // Delete thumbnail
+        await Deno.remove(`data/processed/thumbnails/${image.id}.jpg`).catch(() => {});
+      } catch (error) {
+        // Ignore file deletion errors
+        console.warn(`Failed to delete files for image ${image.id}:`, error);
+      }
+    }
+    
+    console.log(`🗑️  Deleted ${deletedImages.changes} images and ${deletedProcessed.changes} processed versions`);
+    
+    return c.json({
+      success: true,
+      deleted: deletedImages.changes,
+      processedDeleted: deletedProcessed.changes,
+    });
+  } catch (error) {
+    console.error("Failed to delete all images:", error);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to delete images",
+      },
+      500
+    );
+  }
+});
+
 export default admin;

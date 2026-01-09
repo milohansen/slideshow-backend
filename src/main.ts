@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { logger } from "hono/logger";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/deno";
 import { initDatabase, getDb } from "./db/schema.ts";
 import { initStorage } from "./services/storage.ts";
 import { DatabaseSyncManager } from "./db/sync.ts";
@@ -20,29 +21,43 @@ async function processUnprocessedImages() {
   try {
     const db = getDb();
     
+    // Get total number of registered devices
+    const deviceCountResult = db.prepare(`
+      SELECT COUNT(DISTINCT name) as total
+      FROM devices
+    `).get() as { total: number };
+    
+    const totalDevices = deviceCountResult.total;
+    
+    if (totalDevices === 0) {
+      console.log("📸 No devices registered, skipping startup image processing");
+      return;
+    }
+    
     // Find images that don't have processed versions for all device sizes
+    // Only process images that are not already processing or failed
     const unprocessedImages = db.prepare(`
-      SELECT DISTINCT i.id
+      SELECT i.id, COALESCE(pi.device_count, 0) as processed_count
       FROM images i
       LEFT JOIN (
         SELECT image_id, COUNT(DISTINCT device_size) as device_count
         FROM processed_images
         GROUP BY image_id
       ) pi ON i.id = pi.image_id
-      LEFT JOIN (
-        SELECT COUNT(DISTINCT name) as total_devices
-        FROM devices
-      ) d
-      WHERE pi.device_count IS NULL OR pi.device_count < d.total_devices
-    `).all() as Array<{ id: string }>;
+      WHERE i.processing_status != 'processing'
+        AND (pi.device_count IS NULL OR pi.device_count < ?)
+      LIMIT 100
+    `).all(totalDevices) as Array<{ id: string; processed_count: number }>;
 
     if (unprocessedImages.length > 0) {
-      console.log(`📸 Found ${unprocessedImages.length} images to process on startup`);
+      console.log(`📸 Found ${unprocessedImages.length} images to process on startup (${totalDevices} device sizes each)`);
       
       const { queueImageProcessing } = await import("./services/worker-queue.ts");
       for (const image of unprocessedImages) {
         queueImageProcessing(image.id);
       }
+    } else {
+      console.log("✓ All images are processed for all device sizes");
     }
   } catch (error) {
     console.error("Failed to check for unprocessed images:", error);
@@ -80,8 +95,10 @@ if (gcsBucketName && Deno.env.get("DENO_ENV") === "production") {
 // NOW initialize database (will use downloaded file if it exists)
 await initDatabase();
 
-// Process any unprocessed images on startup
-processUnprocessedImages();
+// Process any unprocessed images on startup (don't block server start)
+processUnprocessedImages().catch(err => 
+  console.error("Error processing unprocessed images:", err)
+);
 
 // Health check endpoint for Cloud Run
 app.get("/_health", (c) => {
@@ -94,6 +111,9 @@ app.get("/_health", (c) => {
 
 // Routes
 app.route("/auth", authRoutes);
+
+// Serve static assets
+app.use("/assets/*", serveStatic({ root: "./" }));
 
 // Public UI routes (with optional auth for better UX)
 app.use("/ui/*", optionalAuth);

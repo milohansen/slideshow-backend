@@ -26,7 +26,16 @@ interface ImagesProps {
 export const Images: FC<ImagesProps> = ({ images }) => {
   return (
     <Layout title="Images">
-      <h1>Ingested Images</h1>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 style="margin-bottom: 0;">Ingested Images</h1>
+        <button 
+          id="delete-all-btn" 
+          class="button button-secondary"
+          style="background-color: #ef4444;"
+        >
+          🗑️ Delete All Images
+        </button>
+      </div>
       
       {images.length === 0 ? (
         <div class="card empty-state">
@@ -137,6 +146,8 @@ export const Images: FC<ImagesProps> = ({ images }) => {
           </table>
         </div>
       )}
+      
+      <script src="/assets/js/images.js"></script>
     </Layout>
   );
 };
