@@ -13,13 +13,13 @@ self.onmessage = async (e: MessageEvent) => {
     
     for (const deviceSize of config.deviceSizes) {
       try {
-        // Process image: resize for device and extract color palette
+        // Process image: resize for device, extract color palette, and generate thumbnail
         await processImageForDevice(imageId, deviceSize, outputDir);
         results.push({
           deviceSize: deviceSize.name,
           success: true,
         });
-        console.log(`✓ Processed ${imageId} for ${deviceSize.name} (resized + color extraction)`);
+        console.log(`✓ Processed ${imageId} for ${deviceSize.name} (resized + colors + thumbnail)`);
       } catch (error) {
         results.push({
           deviceSize: deviceSize.name,

@@ -14,6 +14,10 @@ import {
   localPathToGCSPath 
 } from "./storage.ts";
 
+// Thumbnail size for UI
+const THUMBNAIL_WIDTH = 300;
+const THUMBNAIL_HEIGHT = 200;
+
 export interface DeviceSize {
   name: string;
   width: number;
@@ -201,6 +205,55 @@ async function resizeImage(
 }
 
 /**
+ * Generate thumbnail for UI display
+ */
+async function generateThumbnail(
+  sourcePath: string,
+  imageId: string
+): Promise<string> {
+  const thumbnailDir = "data/processed/thumbnails";
+  await ensureDir(thumbnailDir);
+  
+  const ext = sourcePath.substring(sourcePath.lastIndexOf("."));
+  const thumbnailPath = join(thumbnailDir, `${imageId}${ext}`);
+
+  const command = new Deno.Command("magick", {
+    args: [
+      sourcePath,
+      "-resize", `${THUMBNAIL_WIDTH}x${THUMBNAIL_HEIGHT}^`,
+      "-gravity", "center",
+      "-extent", `${THUMBNAIL_WIDTH}x${THUMBNAIL_HEIGHT}`,
+      "-quality", "85",
+      thumbnailPath
+    ],
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const { code, stderr } = await command.output();
+
+  if (code !== 0) {
+    const error = new TextDecoder().decode(stderr);
+    throw new Error(`Failed to generate thumbnail: ${error}`);
+  }
+  
+  // Upload to GCS if enabled
+  if (isGCSEnabled()) {
+    const gcsPath = localPathToGCSPath(thumbnailPath);
+    try {
+      const gcsUri = await uploadFile(thumbnailPath, gcsPath, "image/jpeg");
+      // Clean up local file after successful upload
+      await Deno.remove(thumbnailPath).catch(() => {});
+      return gcsUri;
+    } catch (error) {
+      console.error(`Failed to upload thumbnail to GCS, keeping local file:`, error);
+    }
+  }
+  
+  return thumbnailPath;
+}
+
+/**
  * Process a single image for a specific device size
  */
 export async function processImageForDevice(
@@ -216,6 +269,7 @@ export async function processImageForDevice(
     file_path: string;
     width: number;
     height: number;
+    thumbnail_path?: string;
   } | undefined;
 
   if (!image) {
@@ -232,6 +286,16 @@ export async function processImageForDevice(
       ...existing,
       colorPalette: JSON.parse(existing.colorPalette as unknown as string),
     };
+  }
+
+  // Generate thumbnail if not already created
+  if (!image.thumbnail_path) {
+    try {
+      const thumbnailPath = await generateThumbnail(image.file_path, imageId);
+      db.prepare("UPDATE images SET thumbnail_path = ? WHERE id = ?").run(thumbnailPath, imageId);
+    } catch (error) {
+      console.error(`Failed to generate thumbnail for ${imageId}:`, error);
+    }
   }
 
   // Generate output path

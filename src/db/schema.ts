@@ -28,6 +28,7 @@ export async function initDatabase() {
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
+      thumbnail_path TEXT,
       ingested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_modified DATETIME NOT NULL
     )
