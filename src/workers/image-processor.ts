@@ -7,8 +7,13 @@ console.log("[Worker] 🚀 Worker script loaded and executing");
 
 import { processImageForDevice, type DeviceSize } from "../services/image-processing.ts";
 import { initDatabase } from "../db/schema.ts";
+import { initStorage } from "../services/storage.ts";
 
-console.log("[Worker] 📚 Imports completed, initializing database for worker...");
+console.log("[Worker] 📚 Imports completed, initializing services for worker...");
+
+// Initialize storage in worker context (needed for GCS operations)
+initStorage();
+console.log("[Worker] ✅ Storage initialized in worker");
 
 // Initialize database in worker context
 await initDatabase();
