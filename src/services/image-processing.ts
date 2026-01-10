@@ -290,8 +290,13 @@ async function resizeImage(
   width: number,
   height: number
 ): Promise<void> {
+  console.log(`[resizeImage] 🔧 Starting resize: ${sourcePath} -> ${outputPath} (${width}x${height})`);
+  
+  console.log(`[resizeImage] 📁 Ensuring output directory exists...`);
   await ensureDir(join(outputPath, ".."));
+  console.log(`[resizeImage] ✅ Output directory ready`);
 
+  console.log(`[resizeImage] ⚙️ Running ImageMagick command...`);
   const command = new Deno.Command("magick", {
     args: [
       sourcePath,
@@ -306,24 +311,31 @@ async function resizeImage(
   });
 
   const { code, stderr } = await command.output();
+  console.log(`[resizeImage] 📄 ImageMagick exit code: ${code}`);
 
   if (code !== 0) {
     const error = new TextDecoder().decode(stderr);
+    console.error(`[resizeImage] ❌ ImageMagick failed:`, error);
     throw new Error(`Failed to resize image: ${error}`);
   }
+  console.log(`[resizeImage] ✅ ImageMagick resize successful`);
   
   // Upload to GCS if enabled
   if (isGCSEnabled()) {
+    console.log(`[resizeImage] ☁️ GCS enabled, uploading...`);
     const gcsPath = localPathToGCSPath(outputPath);
     try {
       const gcsUri = await uploadFile(outputPath, gcsPath, "image/jpeg");
-      console.log(`Uploaded to GCS: ${gcsUri}`);
+      console.log(`[resizeImage] ✅ Uploaded to GCS: ${gcsUri}`);
       // Clean up local file after successful upload
       await Deno.remove(outputPath).catch(() => {});
     } catch (error) {
-      console.error(`Failed to upload to GCS, keeping local file:`, error);
+      console.error(`[resizeImage] ⚠️ Failed to upload to GCS, keeping local file:`, error);
     }
+  } else {
+    console.log(`[resizeImage] 💾 GCS not enabled, keeping local file`);
   }
+  console.log(`[resizeImage] ✅✅ Resize completed successfully`);
 }
 
 /**
@@ -443,10 +455,12 @@ export async function processImageForDevice(
   outputDir: string,
   googlePhotosBaseUrl?: string
 ): Promise<ProcessedImageData> {
-  console.log(`[Processing] Starting processImageForDevice: ${imageId} for ${deviceSize.name}`);
+  console.log(`[Processing] 🎯 Starting processImageForDevice: ${imageId} for ${deviceSize.name}`);
+  console.log(`[Processing] 📋 Parameters:`, { imageId, deviceName: deviceSize.name, deviceWidth: deviceSize.width, deviceHeight: deviceSize.height, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
   const db = getDb();
 
   // Get original image info
+  console.log(`[Processing] 🔍 Querying database for image ${imageId}`);
   const image = db.prepare("SELECT * FROM images WHERE id = ?").get(imageId) as {
     id: string;
     file_path: string;
@@ -456,23 +470,28 @@ export async function processImageForDevice(
   } | undefined;
 
   if (!image) {
+    console.error(`[Processing] ❌ Image not found in database: ${imageId}`);
     throw new Error(`Image not found: ${imageId}`);
   }
+  console.log(`[Processing] ✅ Found image: ${image.file_path} (${image.width}x${image.height})`);
 
   // Check if already processed
+  console.log(`[Processing] 🔍 Checking if already processed for ${deviceSize.name}`);
   const existing = db.prepare(
     "SELECT * FROM processed_images WHERE image_id = ? AND device_size = ?"
   ).get(imageId, deviceSize.name) as ProcessedImageData | undefined;
 
   if (existing) {
-    console.log(`[Processing] Image ${imageId} already processed for ${deviceSize.name}, skipping`);
+    console.log(`[Processing] ⏩ Image ${imageId} already processed for ${deviceSize.name}, skipping`);
     return {
       ...existing,
       colorPalette: JSON.parse(existing.colorPalette as unknown as string),
     };
   }
+  console.log(`[Processing] ✅ Not yet processed, continuing...`);
 
   // Determine layout configuration for this image on this device
+  console.log(`[Processing] 📊 Determining layout configuration...`);
   const layoutConfig = determineLayoutConfiguration(
     image.width,
     image.height,
@@ -480,7 +499,7 @@ export async function processImageForDevice(
     deviceSize.height
   );
 
-  console.log(`[Processing] Layout type: ${layoutConfig.layoutType} (image: ${layoutConfig.imageAspectRatio.orientation}, device: ${layoutConfig.deviceOrientation})`);
+  console.log(`[Processing] 📋 Layout type: ${layoutConfig.layoutType} (image: ${layoutConfig.imageAspectRatio.orientation}, device: ${layoutConfig.deviceOrientation})`);
 
   // Generate output path
   const ext = image.file_path.substring(image.file_path.lastIndexOf("."));
@@ -489,13 +508,14 @@ export async function processImageForDevice(
     deviceSize.name,
     `${imageId}${ext}`
   );
+  console.log(`[Processing] 💾 Output path: ${outputPath}`);
 
   // Resize image using Google Photos API if available, otherwise use ImageMagick
-  console.log(`[Processing] Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
+  console.log(`[Processing] 📸 Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
   
   if (googlePhotosBaseUrl) {
     // Use Google Photos API resizing with fallback to local file
-    console.log(`[Processing] Using Google Photos API resizing for ${imageId}`);
+    console.log(`[Processing] ☁️ Using Google Photos API resizing for ${imageId}`);
     await resizeImageFromGooglePhotos(
       googlePhotosBaseUrl,
       outputPath,
@@ -505,29 +525,36 @@ export async function processImageForDevice(
     );
   } else {
     // Use ImageMagick for local files
+    console.log(`[Processing] 🛠️ Using ImageMagick for local file resize`);
     await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
   }
+  console.log(`[Processing] ✅ Resize completed`);
 
   // Determine the final storage path
   const storagePath = isGCSEnabled() 
     ? `gs://${Deno.env.get("GCS_BUCKET_NAME")}/${localPathToGCSPath(outputPath)}`
     : outputPath;
+  console.log(`[Processing] 💾 Storage path: ${storagePath}`);
 
-  console.log(`[Processing] Extracting colors from ${imageId}`);
+  console.log(`[Processing] 🎨 Extracting colors from ${imageId}...`);
   // Extract colors - use local file if it exists, otherwise download from GCS
   let colorExtractionPath = outputPath;
   if (isGCSEnabled() && !await Deno.stat(outputPath).then(() => true).catch(() => false)) {
     // File was uploaded and removed, need to download for color extraction
+    console.log(`[Processing] ☁️ File not found locally, downloading from GCS for color extraction`);
     const tempPath = join(Deno.makeTempDirSync(), `temp${ext}`);
     const gcsPath = localPathToGCSPath(outputPath);
     await downloadFile(gcsPath, tempPath);
     colorExtractionPath = tempPath;
   }
   
+  console.log(`[Processing] 🎨 Extracting colors from: ${colorExtractionPath}`);
   const colors = await extractColors(colorExtractionPath);
+  console.log(`[Processing] ✅ Extracted ${colors.length} colors:`, colors);
   
   // Clean up temp file if used
   if (colorExtractionPath !== outputPath) {
+    console.log(`[Processing] 🧹 Cleaning up temp file: ${colorExtractionPath}`);
     await Deno.remove(colorExtractionPath).catch(() => {});
   }
 
@@ -538,10 +565,11 @@ export async function processImageForDevice(
     sourceColor: colors[0] || "#000000", // Use the most dominant color as source
     allColors: colors,
   };
+  console.log(`[Processing] 🎨 Color palette created:`, colorPalette);
 
   // Store in database with storage path (either GCS URI or local path)
   const processedId = crypto.randomUUID();
-  console.log(`[Processing] Storing processed image ${imageId} for ${deviceSize.name} in database`);
+  console.log(`[Processing] 💾 Storing processed image ${imageId} for ${deviceSize.name} in database with ID ${processedId}`);
   db.prepare(`
     INSERT INTO processed_images (
       id, image_id, device_size, width, height, file_path,
@@ -560,8 +588,9 @@ export async function processImageForDevice(
     colorPalette.sourceColor,
     JSON.stringify(colorPalette)
   );
+  console.log(`[Processing] ✅ Database insert completed`);
 
-  console.log(`[Processing] ✓ Completed processing ${imageId} for ${deviceSize.name}`);
+  console.log(`[Processing] ✅✅✅ FULLY COMPLETED processing ${imageId} for ${deviceSize.name}`);
   return {
     id: processedId,
     imageId,

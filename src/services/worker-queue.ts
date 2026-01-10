@@ -18,9 +18,10 @@ class WorkerQueueManager {
   private workerUrl: URL;
   private imageTaskCounts = new Map<string, { total: number; completed: number; failed: number }>();
 
-  constructor(maxConcurrentWorkers = 4) {
+  constructor(maxConcurrentWorkers = 1) {
     this.maxConcurrentWorkers = maxConcurrentWorkers;
     this.workerUrl = new URL("../workers/image-processor.ts", import.meta.url);
+    console.log(`[WorkerQueue] Initialized with maxConcurrentWorkers=${maxConcurrentWorkers}`);
   }
 
   /**
@@ -60,7 +61,8 @@ class WorkerQueueManager {
    */
   private spawnWorker(task: QueueTask) {
     this.activeWorkers++;
-    console.log(`[Queue] Spawning worker (${this.activeWorkers}/${this.maxConcurrentWorkers}): ${task.imageId} for ${task.deviceName}`);
+    console.log(`[Queue] ⚡ Spawning worker (${this.activeWorkers}/${this.maxConcurrentWorkers}): ${task.imageId} for ${task.deviceName}`);
+    console.log(`[Queue] 📋 Queue status: ${this.queue.length} tasks queued, ${this.activeWorkers} active workers`);
 
     const worker = new Worker(this.workerUrl.href, {
       type: "module",
@@ -76,16 +78,26 @@ class WorkerQueueManager {
       },
     });
 
-    worker.postMessage({
-      imageId: task.imageId,
-      deviceName: task.deviceName,
-      deviceWidth: task.deviceWidth,
-      deviceHeight: task.deviceHeight,
-      googlePhotosBaseUrl: task.googlePhotosBaseUrl, // Pass through the optional Google Photos URL
-      outputDir: "data/processed",
-    });
-
+    // Set up message handler before posting any messages
     worker.onmessage = (e: MessageEvent) => {
+      console.log(`[Queue] 📨 Received message from worker for ${task.imageId}/${task.deviceName}:`, e.data);
+      
+      // Handle ready message
+      if (e.data.type === 'ready') {
+        console.log(`[Queue] ✅ Worker is ready, posting task data`);
+        // Now post the actual task
+        worker.postMessage({
+          imageId: task.imageId,
+          deviceName: task.deviceName,
+          deviceWidth: task.deviceWidth,
+          deviceHeight: task.deviceHeight,
+          googlePhotosBaseUrl: task.googlePhotosBaseUrl,
+          outputDir: "data/processed",
+        });
+        return;
+      }
+      
+      // Handle task completion
       const { success, imageId, deviceName, error } = e.data;
       if (success) {
         console.log(`[Worker] ✓ Completed: ${imageId} for ${deviceName}`);
@@ -96,20 +108,26 @@ class WorkerQueueManager {
     };
 
     worker.onerror = (e: ErrorEvent) => {
-      console.error(`Worker error for ${task.imageId}/${task.deviceName}:`, e.message);
-      this.onWorkerComplete();
+      console.error(`[Queue] ❌ Worker error for ${task.imageId}/${task.deviceName}:`, e.message);
+      console.error(`[Queue] Error details:`, e);
+      this.onWorkerComplete(task.imageId, false, e.message);
     };
+    
+    // No need to send ready-check, worker will send ready message automatically
+    console.log(`[Queue] ⏳ Waiting for worker to send ready message...`);
   }
 
   /**
    * Handle worker completion
    */
   private async onWorkerComplete(imageId: string, success: boolean, error?: string) {
+    console.log(`[Queue] 🏁 onWorkerComplete called for ${imageId}, success=${success}, error=${error}`);
     this.activeWorkers--;
-    console.log(`[Queue] Worker completed. Active: ${this.activeWorkers}, Queued: ${this.queue.length}`);
+    console.log(`[Queue] 📊 Worker completed. Active: ${this.activeWorkers}, Queued: ${this.queue.length}`);
     
     // Update task counts for this image
     const taskCount = this.imageTaskCounts.get(imageId);
+    console.log(`[Queue] 📈 Task count for ${imageId}:`, taskCount);
     if (taskCount) {
       if (success) {
         taskCount.completed++;
@@ -163,7 +181,8 @@ let workerQueue: WorkerQueueManager | null = null;
  */
 export function getWorkerQueue(): WorkerQueueManager {
   if (!workerQueue) {
-    workerQueue = new WorkerQueueManager(4);
+    console.log(`[WorkerQueue] Creating new WorkerQueueManager instance`);
+    workerQueue = new WorkerQueueManager(1); // Limited to 1 worker for debugging
   }
   return workerQueue;
 }
