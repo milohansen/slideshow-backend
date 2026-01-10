@@ -450,6 +450,158 @@ export async function generateImageThumbnail(imageId: string): Promise<void> {
  * @param outputDir - Output directory for processed images
  * @param googlePhotosBaseUrl - Optional Google Photos base URL for API resizing
  */
+/**
+ * Process image for device without database dependency (for use in workers)
+ * Returns the processing result data without storing to database
+ */
+export async function processImageForDeviceWorker(
+  imageData: {
+    id: string;
+    file_path: string;
+    width: number;
+    height: number;
+  },
+  deviceSize: DeviceSize,
+  outputDir: string,
+  googlePhotosBaseUrl?: string
+): Promise<{
+  processedId: string;
+  imageId: string;
+  deviceSize: string;
+  width: number;
+  height: number;
+  filePath: string;
+  colorPalette: ColorPalette;
+  layoutType: "single" | "paired";
+  layoutConfiguration: any;
+}> {
+  const imageId = imageData.id;
+  console.log(`[Processing] 🎯 Starting processImageForDeviceWorker: ${imageId} for ${deviceSize.name}`);
+  console.log(`[Processing] 📋 Parameters:`, { imageId, deviceName: deviceSize.name, deviceWidth: deviceSize.width, deviceHeight: deviceSize.height, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
+
+  console.log(`[Processing] ✅ Received image data: ${imageData.file_path} (${imageData.width}x${imageData.height})`);
+
+  // Determine layout configuration for this image on this device
+  console.log(`[Processing] 📊 Determining layout configuration...`);
+  const layoutConfig = determineLayoutConfiguration(
+    imageData.width,
+    imageData.height,
+    deviceSize.width,
+    deviceSize.height
+  );
+
+  console.log(`[Processing] 📋 Layout type: ${layoutConfig.layoutType} (image: ${layoutConfig.imageAspectRatio.orientation}, device: ${layoutConfig.deviceOrientation})`);
+
+  // Generate output path
+  const ext = imageData.file_path.substring(imageData.file_path.lastIndexOf("."));
+  const outputPath = join(
+    outputDir,
+    deviceSize.name,
+    `${imageId}${ext}`
+  );
+  console.log(`[Processing] 💾 Output path: ${outputPath}`);
+
+  // Download source file from GCS if needed
+  let sourceFilePath = imageData.file_path;
+  let tempSourceFile: string | null = null;
+  
+  if (imageData.file_path.startsWith("gs://")) {
+    console.log(`[Processing] ☁️ Source file is in GCS, downloading: ${imageData.file_path}`);
+    const gcsInfo = parseGCSUri(imageData.file_path);
+    if (!gcsInfo) {
+      throw new Error(`Invalid GCS URI: ${imageData.file_path}`);
+    }
+    
+    tempSourceFile = join(Deno.makeTempDirSync(), `source-${imageId}${ext}`);
+    await downloadFile(gcsInfo.path, tempSourceFile);
+    sourceFilePath = tempSourceFile;
+    console.log(`[Processing] ✅ Downloaded source file to: ${sourceFilePath}`);
+  }
+
+  // Resize image using Google Photos API if available, otherwise use ImageMagick
+  console.log(`[Processing] 📸 Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
+  
+  try {
+    if (googlePhotosBaseUrl) {
+      // Use Google Photos API resizing with fallback to local file
+      console.log(`[Processing] ☁️ Using Google Photos API resizing for ${imageId}`);
+      await resizeImageFromGooglePhotos(
+        googlePhotosBaseUrl,
+        outputPath,
+        deviceSize.width,
+        deviceSize.height,
+        sourceFilePath // Use downloaded file if from GCS
+      );
+    } else {
+      // Use ImageMagick for local files
+      console.log(`[Processing] 🛠️ Using ImageMagick for resize`);
+      await resizeImage(sourceFilePath, outputPath, deviceSize.width, deviceSize.height);
+    }
+    console.log(`[Processing] ✅ Resize completed`);
+  } finally {
+    // Clean up temp source file if we downloaded from GCS
+    if (tempSourceFile) {
+      console.log(`[Processing] 🧹 Cleaning up temp source file: ${tempSourceFile}`);
+      await Deno.remove(tempSourceFile).catch(() => {});
+    }
+  }
+
+  // Determine the final storage path
+  const storagePath = isGCSEnabled() 
+    ? `gs://${Deno.env.get("GCS_BUCKET_NAME")}/${localPathToGCSPath(outputPath)}`
+    : outputPath;
+  console.log(`[Processing] 💾 Storage path: ${storagePath}`);
+
+  console.log(`[Processing] 🎨 Extracting colors from ${imageId}...`);
+  // Extract colors - use local file if it exists, otherwise download from GCS
+  let colorExtractionPath = outputPath;
+  if (isGCSEnabled() && !await Deno.stat(outputPath).then(() => true).catch(() => false)) {
+    // File was uploaded and removed, need to download for color extraction
+    console.log(`[Processing] ☁️ File not found locally, downloading from GCS for color extraction`);
+    const tempPath = join(Deno.makeTempDirSync(), `temp${ext}`);
+    const gcsPath = localPathToGCSPath(outputPath);
+    await downloadFile(gcsPath, tempPath);
+    colorExtractionPath = tempPath;
+  }
+  
+  console.log(`[Processing] 🎨 Extracting colors from: ${colorExtractionPath}`);
+  const colors = await extractColors(colorExtractionPath);
+  console.log(`[Processing] ✅ Extracted ${colors.length} colors:`, colors);
+  
+  // Clean up temp file if used
+  if (colorExtractionPath !== outputPath) {
+    console.log(`[Processing] 🧹 Cleaning up temp file: ${colorExtractionPath}`);
+    await Deno.remove(colorExtractionPath).catch(() => {});
+  }
+
+  const colorPalette: ColorPalette = {
+    primary: colors[0] || "#000000",
+    secondary: colors[1] || "#000000",
+    tertiary: colors[2] || "#000000",
+    sourceColor: colors[0] || "#000000",
+    allColors: colors,
+  };
+  console.log(`[Processing] 🎨 Color palette created:`, colorPalette);
+
+  const processedId = crypto.randomUUID();
+  console.log(`[Processing] ✅✅✅ FULLY COMPLETED processing ${imageId} for ${deviceSize.name}`);
+  
+  return {
+    processedId,
+    imageId,
+    deviceSize: deviceSize.name,
+    width: deviceSize.width,
+    height: deviceSize.height,
+    filePath: storagePath,
+    colorPalette,
+    layoutType: layoutConfig.layoutType,
+    layoutConfiguration: layoutConfig,
+  };
+}
+
+/**
+ * Process image for device with database operations (for use in main thread)
+ */
 export async function processImageForDevice(
   imageId: string,
   deviceSize: DeviceSize,

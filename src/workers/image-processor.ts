@@ -5,8 +5,7 @@
 
 console.log("[Worker] 🚀 Worker script loaded and executing");
 
-import { processImageForDevice, type DeviceSize } from "../services/image-processing.ts";
-import { initDatabase } from "../db/schema.ts";
+import { processImageForDeviceWorker, type DeviceSize } from "../services/image-processing.ts";
 import { initStorage } from "../services/storage.ts";
 
 console.log("[Worker] 📚 Imports completed, initializing services for worker...");
@@ -15,26 +14,21 @@ console.log("[Worker] 📚 Imports completed, initializing services for worker..
 initStorage();
 console.log("[Worker] ✅ Storage initialized in worker");
 
-// Initialize database in worker context
-await initDatabase();
-console.log("[Worker] ✅ Database initialized in worker");
-
 console.log("[Worker] 📚 Setting up message handler");
 
 // Use addEventListener instead of self.onmessage
 self.addEventListener('message', async (e: MessageEvent) => {
   console.log("[Worker] 📨 message event listener called!");
-  const { imageId, deviceName, deviceWidth, deviceHeight, googlePhotosBaseUrl, outputDir } = e.data;
+  const { imageData, deviceName, deviceWidth, deviceHeight, googlePhotosBaseUrl, outputDir } = e.data;
   
-  // Ignore the ready check message
-  if (e.data.type === 'ready-check') {
-    console.log("[Worker] ✅ Ready check received, sending ready response");
-    self.postMessage({ type: 'ready' });
+  // Send ready message immediately after loading
+  if (!imageData) {
+    console.log("[Worker] ✅ No image data, this must be initialization");
     return;
   }
   
-  console.log(`[Worker] 🎬 Starting processing ${imageId} for ${deviceName} (${deviceWidth}x${deviceHeight})`);
-  console.log(`[Worker] 📦 Received data:`, { imageId, deviceName, deviceWidth, deviceHeight, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
+  console.log(`[Worker] 🎬 Starting processing ${imageData.id} for ${deviceName} (${deviceWidth}x${deviceHeight})`);
+  console.log(`[Worker] 📦 Received data:`, { imageId: imageData.id, deviceName, deviceWidth, deviceHeight, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
   
   try {
     const deviceSize: DeviceSize = {
@@ -43,31 +37,30 @@ self.addEventListener('message', async (e: MessageEvent) => {
       height: deviceHeight,
     };
     
-    // Process image for this specific device size
-    console.log(`[Worker] 🔧 Calling processImageForDevice...`);
-    const result = await processImageForDevice(imageId, deviceSize, outputDir, googlePhotosBaseUrl);
-    console.log(`[Worker] ✅ processImageForDevice completed for ${imageId}/${deviceName}:`, result.id);
+    // Process image for this specific device size (without database)
+    console.log(`[Worker] 🔧 Calling processImageForDeviceWorker...`);
+    const result = await processImageForDeviceWorker(imageData, deviceSize, outputDir, googlePhotosBaseUrl);
+    console.log(`[Worker] ✅ processImageForDeviceWorker completed for ${imageData.id}/${deviceName}:`, result.processedId);
     
-    console.log(`[Worker] 📤 Posting success message...`);
+    console.log(`[Worker] 📤 Posting success message with result data...`);
     self.postMessage({
       success: true,
-      imageId,
-      deviceName,
+      result,
     });
-    console.log(`[Worker] ✅ Success message posted for ${imageId}/${deviceName}`);
+    console.log(`[Worker] ✅ Success message posted for ${imageData.id}/${deviceName}`);
   } catch (error) {
-    console.error(`[Worker] ❌ Failed to process ${imageId} for ${deviceName}:`, error);
+    console.error(`[Worker] ❌ Failed to process ${imageData.id} for ${deviceName}:`, error);
     console.error(`[Worker] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
     console.log(`[Worker] 📤 Posting error message...`);
     self.postMessage({
       success: false,
-      imageId,
+      imageId: imageData.id,
       deviceName,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    console.log(`[Worker] ❌ Error message posted for ${imageId}/${deviceName}`);
+    console.log(`[Worker] ❌ Error message posted for ${imageData.id}/${deviceName}`);
   } finally {
-    console.log(`[Worker] 🔚 Closing worker for ${imageId}/${deviceName}`);
+    console.log(`[Worker] 🔚 Closing worker for ${imageData.id}/${deviceName}`);
     self.close();
   }
 });

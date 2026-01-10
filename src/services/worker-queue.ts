@@ -51,7 +51,11 @@ class WorkerQueueManager {
     while (this.activeWorkers < this.maxConcurrentWorkers && this.queue.length > 0) {
       const task = this.queue.shift();
       if (task) {
-        this.spawnWorker(task);
+        // Don't await - let workers spawn asynchronously
+        this.spawnWorker(task).catch(err => {
+          console.error(`[Queue] Error spawning worker for ${task.imageId}/${task.deviceName}:`, err);
+          this.onWorkerComplete(task.imageId, false, err.message);
+        });
       }
     }
   }
@@ -59,10 +63,39 @@ class WorkerQueueManager {
   /**
    * Spawn a worker to process a single task
    */
-  private spawnWorker(task: QueueTask) {
+  private async spawnWorker(task: QueueTask) {
     this.activeWorkers++;
     console.log(`[Queue] ⚡ Spawning worker (${this.activeWorkers}/${this.maxConcurrentWorkers}): ${task.imageId} for ${task.deviceName}`);
     console.log(`[Queue] 📋 Queue status: ${this.queue.length} tasks queued, ${this.activeWorkers} active workers`);
+
+    // Fetch image data from database
+    const { getDb } = await import("../db/schema.ts");
+    const db = getDb();
+    
+    // Get image data
+    const imageData = db.prepare("SELECT id, file_path, width, height FROM images WHERE id = ?").get(task.imageId) as {
+      id: string;
+      file_path: string;
+      width: number;
+      height: number;
+    } | undefined;
+    
+    if (!imageData) {
+      console.error(`[Queue] ❌ Image not found: ${task.imageId}`);
+      this.onWorkerComplete(task.imageId, false, "Image not found");
+      return;
+    }
+    
+    // Check if already processed
+    const existing = db.prepare(
+      "SELECT * FROM processed_images WHERE image_id = ? AND device_size = ?"
+    ).get(task.imageId, task.deviceName);
+    
+    if (existing) {
+      console.log(`[Queue] ⏩ Image ${task.imageId} already processed for ${task.deviceName}, skipping`);
+      this.onWorkerComplete(task.imageId, true);
+      return;
+    }
 
     const worker = new Worker(this.workerUrl.href, {
       type: "module",
@@ -79,32 +112,20 @@ class WorkerQueueManager {
     });
 
     // Set up message handler before posting any messages
-    worker.onmessage = (e: MessageEvent) => {
+    worker.onmessage = async (e: MessageEvent) => {
       console.log(`[Queue] 📨 Received message from worker for ${task.imageId}/${task.deviceName}:`, e.data);
       
-      // Handle ready message
-      if (e.data.type === 'ready') {
-        console.log(`[Queue] ✅ Worker is ready, posting task data`);
-        // Now post the actual task
-        worker.postMessage({
-          imageId: task.imageId,
-          deviceName: task.deviceName,
-          deviceWidth: task.deviceWidth,
-          deviceHeight: task.deviceHeight,
-          googlePhotosBaseUrl: task.googlePhotosBaseUrl,
-          outputDir: "data/processed",
-        });
-        return;
-      }
-      
       // Handle task completion
-      const { success, imageId, deviceName, error } = e.data;
-      if (success) {
-        console.log(`[Worker] ✓ Completed: ${imageId} for ${deviceName}`);
+      const { success, result, error } = e.data;
+      if (success && result) {
+        console.log(`[Worker] ✓ Completed: ${result.imageId} for ${task.deviceName}`);
+        // Store result in database
+        await this.storeProcessedImage(result);
+        this.onWorkerComplete(task.imageId, true);
       } else {
-        console.error(`[Worker] ✗ Failed: ${imageId} for ${deviceName}:`, error);
+        console.error(`[Worker] ✗ Failed: ${task.imageId} for ${task.deviceName}:`, error);
+        this.onWorkerComplete(task.imageId, false, error);
       }
-      this.onWorkerComplete(task.imageId, success, error);
     };
 
     worker.onerror = (e: ErrorEvent) => {
@@ -113,8 +134,53 @@ class WorkerQueueManager {
       this.onWorkerComplete(task.imageId, false, e.message);
     };
     
-    // No need to send ready-check, worker will send ready message automatically
-    console.log(`[Queue] ⏳ Waiting for worker to send ready message...`);
+    // Post task data to worker immediately
+    console.log(`[Queue] 📤 Posting task with image data to worker`);
+    worker.postMessage({
+      imageData,
+      deviceName: task.deviceName,
+      deviceWidth: task.deviceWidth,
+      deviceHeight: task.deviceHeight,
+      googlePhotosBaseUrl: task.googlePhotosBaseUrl,
+      outputDir: "data/processed",
+    });
+  }
+
+  /**
+   * Store processed image result to database
+   */
+  private async storeProcessedImage(result: {
+    processedId: string;
+    imageId: string;
+    deviceSize: string;
+    width: number;
+    height: number;
+    filePath: string;
+    colorPalette: any;
+  }) {
+    const { getDb } = await import("../db/schema.ts");
+    const db = getDb();
+    
+    console.log(`[Queue] 💾 Storing processed image ${result.imageId} for ${result.deviceSize} in database`);
+    db.prepare(`
+      INSERT INTO processed_images (
+        id, image_id, device_size, width, height, file_path,
+        color_primary, color_secondary, color_tertiary, color_source, color_palette
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      result.processedId,
+      result.imageId,
+      result.deviceSize,
+      result.width,
+      result.height,
+      result.filePath,
+      result.colorPalette.primary,
+      result.colorPalette.secondary,
+      result.colorPalette.tertiary,
+      result.colorPalette.sourceColor,
+      JSON.stringify(result.colorPalette)
+    );
+    console.log(`[Queue] ✅ Database insert completed for ${result.imageId}/${result.deviceSize}`);
   }
 
   /**
