@@ -577,7 +577,8 @@ export async function processAllImages(
           console.log(`  Processing: ${image.id} for ${deviceSize.name}...`);
         }
 
-        await processImageForDevice(image.id, deviceSize, outputDir);
+        // Note: processAllImages processes local files, so no Google Photos URL
+        await processImageForDevice(image.id, deviceSize, outputDir, undefined);
         processed++;
       } catch (error) {
         console.error(`Error processing ${image.id} for ${deviceSize.name}:`, error);
