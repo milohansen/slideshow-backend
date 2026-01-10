@@ -42,7 +42,5 @@ If test images are available, see the full pipeline in action.
 The examples show how to use the composition functions to:
 - Pair two portrait images side-by-side for landscape devices
 - Add color overlays for visual harmony
-- Blend images for transitions
-- Apply vignette effects
 
 See the example output for code snippets you can use in your own scripts.

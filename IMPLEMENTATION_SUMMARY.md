@@ -40,8 +40,6 @@ This implementation adds comprehensive image processing pipeline infrastructure 
 **Main Functions**:
 - `composePairedPortraitImages(options)` - Create side-by-side portrait pair
 - `addColorOverlay(source, output, color, opacity)` - Apply color tint
-- `blendImages(img1, img2, output, blendPercent)` - Blend two images
-- `applyVignette(source, output, intensity)` - Add vignette effect
 
 ### 3. Consistent Pipeline Structure (`src/services/image-ingestion.ts`)
 

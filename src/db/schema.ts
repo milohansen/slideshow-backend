@@ -27,6 +27,7 @@ export async function initDatabase() {
       file_hash TEXT NOT NULL,
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
+      aspect_ratio REAL NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
       thumbnail_path TEXT,
       processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed')),
@@ -186,6 +187,30 @@ function runMigrations(db: Database): void {
       console.log("🔄 Running migration: Adding processing_app_id column to images table");
       db.exec("ALTER TABLE images ADD COLUMN processing_app_id TEXT");
       console.log("✅ Migration completed: processing_app_id column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 5: Add aspect_ratio column to images table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasAspectRatio = tableInfo.some(col => col.name === "aspect_ratio");
+    
+    if (!hasAspectRatio) {
+      console.log("🔄 Running migration: Adding aspect_ratio column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN aspect_ratio REAL");
+      
+      // Calculate and update aspect ratio for existing images
+      const images = db.prepare("SELECT id, width, height FROM images").all() as Array<{ id: string; width: number; height: number }>;
+      const updateStmt = db.prepare("UPDATE images SET aspect_ratio = ? WHERE id = ?");
+      
+      for (const image of images) {
+        const ratio = parseFloat((image.width / image.height).toFixed(5));
+        updateStmt.run(ratio, image.id);
+      }
+      
+      console.log(`✅ Migration completed: aspect_ratio column added and calculated for ${images.length} images`);
     }
   } catch (error) {
     console.error("❌ Migration failed:", error);

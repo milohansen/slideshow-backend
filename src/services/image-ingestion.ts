@@ -14,6 +14,7 @@ export interface ImageMetadata {
   fileHash: string;
   width: number;
   height: number;
+  ratio: number; // width / height rounded to 5 decimal places
   orientation: "portrait" | "landscape" | "square";
   lastModified: Date;
 }
@@ -97,12 +98,14 @@ export async function extractImageMetadata(filePath: string): Promise<ImageMetad
   const fileInfo = await Deno.stat(filePath);
   const lastModified = fileInfo.mtime || new Date();
   const orientation = determineOrientation(width, height);
+  const ratio = parseFloat((width / height).toFixed(5));
 
   return {
     filePath,
     fileHash,
     width,
     height,
+    ratio,
     orientation,
     lastModified,
   };
@@ -140,12 +143,13 @@ async function storeImageMetadata(id: string, metadata: ImageMetadata): Promise<
   db.prepare(
     `
     INSERT INTO images (
-      id, file_path, file_hash, width, height, orientation, processing_status, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+      id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
     ON CONFLICT(file_path) DO UPDATE SET
       file_hash = excluded.file_hash,
       width = excluded.width,
       height = excluded.height,
+      aspect_ratio = excluded.aspect_ratio,
       orientation = excluded.orientation,
       processing_status = 'pending',
       last_modified = excluded.last_modified
@@ -156,6 +160,7 @@ async function storeImageMetadata(id: string, metadata: ImageMetadata): Promise<
     metadata.fileHash,
     metadata.width,
     metadata.height,
+    metadata.ratio,
     metadata.orientation,
     metadata.lastModified.toISOString()
   );
@@ -344,6 +349,7 @@ export async function ingestFromGooglePhotos(
       // Extract metadata
       const width = item.mediaFile.mediaFileMetadata.width;
       const height = item.mediaFile.mediaFileMetadata.height;
+      const ratio = parseFloat((width / height).toFixed(5));
       const orientation = determineOrientation(width, height);
       const creationTime = new Date(item.createTime);
 
@@ -369,14 +375,15 @@ export async function ingestFromGooglePhotos(
       const db = getDb();
       db.prepare(`
         INSERT INTO images (
-          id, file_path, file_hash, width, height, orientation, processing_status, last_modified
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+          id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(
         imageId,
         storagePath,
         fileHash,
         width,
         height,
+        ratio,
         orientation,
         creationTime.toISOString()
       );
@@ -458,6 +465,7 @@ export async function processUploadedImage(
         fileHash: "",
         width: 0,
         height: 0,
+        ratio: 1.0,
         orientation: "landscape",
         lastModified: new Date(),
       },
@@ -486,6 +494,7 @@ export async function processGooglePhotosImage(
           fileHash: "",
           width: 0,
           height: 0,
+          ratio: 1.0,
           orientation: "landscape",
           lastModified: new Date(),
         },
@@ -517,17 +526,18 @@ export async function processGooglePhotosImage(
     // Step 3: Check for duplicates
     if (imageExists(fileHash)) {
       await Deno.remove(tempPath).catch(() => {});
+      const width = mediaItem.mediaFile.mediaFileMetadata.width;
+      const height = mediaItem.mediaFile.mediaFileMetadata.height;
+      const ratio = parseFloat((width / height).toFixed(5));
       return {
         imageId: "",
         metadata: {
           filePath: "", // Empty since temp file was deleted
           fileHash,
-          width: mediaItem.mediaFile.mediaFileMetadata.width,
-          height: mediaItem.mediaFile.mediaFileMetadata.height,
-          orientation: determineOrientation(
-            mediaItem.mediaFile.mediaFileMetadata.width,
-            mediaItem.mediaFile.mediaFileMetadata.height
-          ),
+          width,
+          height,
+          ratio,
+          orientation: determineOrientation(width, height),
           lastModified: new Date(mediaItem.createTime),
         },
         status: "skipped",
@@ -538,6 +548,7 @@ export async function processGooglePhotosImage(
     // Step 4: Extract full metadata
     const width = mediaItem.mediaFile.mediaFileMetadata.width;
     const height = mediaItem.mediaFile.mediaFileMetadata.height;
+    const ratio = parseFloat((width / height).toFixed(5));
     const orientation = determineOrientation(width, height);
     const creationTime = new Date(mediaItem.createTime);
 
@@ -564,6 +575,7 @@ export async function processGooglePhotosImage(
       fileHash,
       width,
       height,
+      ratio,
       orientation,
       lastModified: creationTime,
     };
@@ -572,14 +584,15 @@ export async function processGooglePhotosImage(
     const db = getDb();
     db.prepare(`
       INSERT INTO images (
-        id, file_path, file_hash, width, height, orientation, processing_status, last_modified
-      ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+        id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
     `).run(
       imageId,
       metadata.filePath,
       metadata.fileHash,
       metadata.width,
       metadata.height,
+      metadata.ratio,
       metadata.orientation,
       metadata.lastModified.toISOString()
     );
@@ -600,6 +613,7 @@ export async function processGooglePhotosImage(
         fileHash: "",
         width: 0,
         height: 0,
+        ratio: 1.0,
         orientation: "landscape",
         lastModified: new Date(),
       },

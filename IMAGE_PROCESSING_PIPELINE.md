@@ -72,8 +72,6 @@ The `image-composition.ts` module handles later-stage processing with ImageMagic
 
 - `composePairedPortraitImages(options)` - Combine two portrait images side-by-side
 - `addColorOverlay(sourcePath, outputPath, overlayColor, opacity)` - Add a color tint
-- `blendImages(image1Path, image2Path, outputPath, blendPercentage)` - Create blended transitions
-- `applyVignette(sourcePath, outputPath, intensity)` - Add vignette effect
 
 ### Composite Pipeline
 
