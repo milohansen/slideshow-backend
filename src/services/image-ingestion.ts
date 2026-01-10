@@ -494,6 +494,13 @@ export async function processGooglePhotosImage(
       };
     }
 
+    // Ensure temp directory exists
+    try {
+      await Deno.mkdir(tempDir, { recursive: true });
+    } catch {
+      // Directory already exists
+    }
+
     // Step 1: Download image from Google Photos
     const imageData = await downloadMediaItem(accessToken, mediaItem.mediaFile.baseUrl);
 
@@ -513,7 +520,7 @@ export async function processGooglePhotosImage(
       return {
         imageId: "",
         metadata: {
-          filePath: tempPath,
+          filePath: "", // Empty since temp file was deleted
           fileHash,
           width: mediaItem.mediaFile.mediaFileMetadata.width,
           height: mediaItem.mediaFile.mediaFileMetadata.height,
@@ -551,7 +558,17 @@ export async function processGooglePhotosImage(
       }
     }
 
-    // Step 5: Store in database
+    // Step 5: Store in database using consistent metadata structure
+    const metadata: ImageMetadata = {
+      filePath: storagePath,
+      fileHash,
+      width,
+      height,
+      orientation,
+      lastModified: creationTime,
+    };
+    
+    // Store metadata in database
     const db = getDb();
     db.prepare(`
       INSERT INTO images (
@@ -559,12 +576,12 @@ export async function processGooglePhotosImage(
       ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
     `).run(
       imageId,
-      storagePath,
-      fileHash,
-      width,
-      height,
-      orientation,
-      creationTime.toISOString()
+      metadata.filePath,
+      metadata.fileHash,
+      metadata.width,
+      metadata.height,
+      metadata.orientation,
+      metadata.lastModified.toISOString()
     );
 
     // Step 6: Queue for device-specific processing
@@ -572,14 +589,7 @@ export async function processGooglePhotosImage(
 
     return {
       imageId,
-      metadata: {
-        filePath: storagePath,
-        fileHash,
-        width,
-        height,
-        orientation,
-        lastModified: creationTime,
-      },
+      metadata,
       status: "success",
     };
   } catch (error) {
