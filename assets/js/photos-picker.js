@@ -222,8 +222,16 @@ function setupOpenPickerButton() {
           throw new Error("Failed to create session");
         }
 
-        // Reload page with new session
-        window.location.reload();
+        const data = await response.json();
+        
+        // Open the newly created picker session
+        if (data.pickerUri) {
+          window.open(data.pickerUri, '_blank');
+          // Reload page to show the new session
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          throw new Error("No picker URI in response");
+        }
       } catch (error) {
         alert("Failed to create new session: " + error.message);
         openPickerBtn.disabled = false;

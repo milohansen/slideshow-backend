@@ -31,6 +31,7 @@ export async function initDatabase() {
       thumbnail_path TEXT,
       processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed')),
       processing_error TEXT,
+      processing_app_id TEXT,
       ingested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_modified DATETIME NOT NULL
     )
@@ -171,6 +172,20 @@ function runMigrations(db: Database): void {
       console.log("🔄 Running migration: Adding expire_time column to picker_sessions table");
       db.exec("ALTER TABLE picker_sessions ADD COLUMN expire_time DATETIME");
       console.log("✅ Migration completed: expire_time column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 4: Add processing_app_id column to images table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasProcessingAppId = tableInfo.some(col => col.name === "processing_app_id");
+    
+    if (!hasProcessingAppId) {
+      console.log("🔄 Running migration: Adding processing_app_id column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN processing_app_id TEXT");
+      console.log("✅ Migration completed: processing_app_id column added");
     }
   } catch (error) {
     console.error("❌ Migration failed:", error);

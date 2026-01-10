@@ -285,6 +285,7 @@ export function getImageStats(): {
  * Ingest images from Google Photos Picker API
  */
 export async function ingestFromGooglePhotos(
+  accessToken: string,
   mediaItems: PickedMediaItem[]
 ): Promise<{
   ingested: number;
@@ -320,7 +321,7 @@ export async function ingestFromGooglePhotos(
       console.log(`  📥 Downloading: ${item.mediaFile.filename}`);
 
       // Download image from Google Photos (original size)
-      const imageData = await downloadMediaItem(item.mediaFile.baseUrl);
+      const imageData = await downloadMediaItem(accessToken, item.mediaFile.baseUrl);
 
       // Determine file extension from mime type
       const ext = item.mediaFile.mimeType.split("/")[1] || "jpg";

@@ -335,7 +335,7 @@ admin.post("/photos/picker/:sessionId/ingest", async (c) => {
     // Import from services/image-ingestion.ts - we'll extend this next
     const { ingestFromGooglePhotos } = await import("../services/image-ingestion.ts");
 
-    const results = await ingestFromGooglePhotos(images);
+    const results = await ingestFromGooglePhotos(accessToken, images);
 
     // Note: We don't delete the session here - let it expire naturally via Google's API
     // This allows users to re-import if needed or view what was imported

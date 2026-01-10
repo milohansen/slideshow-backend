@@ -260,11 +260,13 @@ export function cleanupExpiredSessions(): number {
 
 /**
  * Download media item from Google Photos
+ * @param accessToken - OAuth 2.0 access token (required for Picker API baseUrl)
  * @param baseUrl - Base URL from media item
  * @param width - Optional width for download (default: original)
  * @param height - Optional height for download (default: original)
  */
 export async function downloadMediaItem(
+  accessToken: string,
   baseUrl: string,
   width?: number,
   height?: number
@@ -279,7 +281,11 @@ export async function downloadMediaItem(
     downloadUrl = `${baseUrl}=d`; // Download original
   }
 
-  const response = await fetch(downloadUrl);
+  const response = await fetch(downloadUrl, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to download media: ${response.status} ${response.statusText}`);

@@ -14,6 +14,42 @@ import { requireAuth, optionalAuth } from "./middleware/auth.ts";
 
 const app = new Hono();
 
+// Generate unique app instance ID
+export const APP_INSTANCE_ID = crypto.randomUUID();
+console.log(`🆔 App instance ID: ${APP_INSTANCE_ID}`);
+
+/**
+ * Recover images that were being processed by a different app instance
+ * (likely from a crashed or restarted instance)
+ */
+async function recoverOrphanedProcessingImages() {
+  try {
+    const db = getDb();
+    
+    // Find images that are marked as processing but belong to a different app instance
+    const orphanedImages = db.prepare(`
+      SELECT id, processing_app_id
+      FROM images
+      WHERE processing_status = 'processing'
+        AND (processing_app_id IS NULL OR processing_app_id != ?)
+    `).all(APP_INSTANCE_ID) as Array<{ id: string; processing_app_id: string | null }>;
+
+    if (orphanedImages.length > 0) {
+      console.log(`🔄 Found ${orphanedImages.length} orphaned processing images, re-queueing...`);
+      
+      const { queueImageProcessing } = await import("./services/worker-queue.ts");
+      for (const image of orphanedImages) {
+        console.log(`  Re-queueing ${image.id} (was owned by ${image.processing_app_id || 'unknown'})`);
+        // Reset status to pending before re-queueing
+        db.prepare("UPDATE images SET processing_status = 'pending', processing_app_id = NULL, processing_error = NULL WHERE id = ?").run(image.id);
+        queueImageProcessing(image.id);
+      }
+    }
+  } catch (error) {
+    console.error("Failed to recover orphaned processing images:", error);
+  }
+}
+
 /**
  * Process any images that haven't been processed for all device sizes
  */
@@ -94,6 +130,11 @@ if (gcsBucketName && Deno.env.get("DENO_ENV") === "production") {
 
 // NOW initialize database (will use downloaded file if it exists)
 await initDatabase();
+
+// Recover orphaned processing images first (don't block server start)
+recoverOrphanedProcessingImages().catch(err => 
+  console.error("Error recovering orphaned images:", err)
+);
 
 // Process any unprocessed images on startup (don't block server start)
 processUnprocessedImages().catch(err => 

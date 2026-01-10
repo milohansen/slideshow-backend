@@ -125,12 +125,12 @@ class WorkerQueueManager {
         const db = getDb();
         
         if (taskCount.failed > 0) {
-          db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ? WHERE id = ?").run(
+          db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ?, processing_app_id = NULL WHERE id = ?").run(
             `Processing failed for ${taskCount.failed}/${taskCount.total} device sizes`,
             imageId
           );
         } else {
-          db.prepare("UPDATE images SET processing_status = 'complete', processing_error = NULL WHERE id = ?").run(imageId);
+          db.prepare("UPDATE images SET processing_status = 'complete', processing_error = NULL, processing_app_id = NULL WHERE id = ?").run(imageId);
         }
         
         // Clean up tracking
@@ -175,8 +175,11 @@ export async function queueImageProcessing(imageId: string) {
   const { generateImageThumbnail } = await import("./image-processing.ts");
   const db = getDb();
 
-  // Set status to processing
-  db.prepare("UPDATE images SET processing_status = 'processing' WHERE id = ?").run(imageId);
+  // Get app instance ID from main.ts
+  const { APP_INSTANCE_ID } = await import("../main.ts");
+
+  // Set status to processing and mark with our app instance ID
+  db.prepare("UPDATE images SET processing_status = 'processing', processing_app_id = ? WHERE id = ?").run(APP_INSTANCE_ID, imageId);
 
   // Get all registered devices
   const devices = db.prepare(`
@@ -191,7 +194,7 @@ export async function queueImageProcessing(imageId: string) {
 
   if (devices.length === 0) {
     console.warn(`[Processing] No devices registered, skipping processing for ${imageId}`);
-    db.prepare("UPDATE images SET processing_status = 'complete' WHERE id = ?").run(imageId);
+    db.prepare("UPDATE images SET processing_status = 'complete', processing_app_id = NULL WHERE id = ?").run(imageId);
     return;
   }
 
@@ -202,7 +205,7 @@ export async function queueImageProcessing(imageId: string) {
     await generateImageThumbnail(imageId);
   } catch (error) {
     console.error(`[Processing] Failed to generate thumbnail for ${imageId}:`, error);
-    db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ? WHERE id = ?").run(
+    db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ?, processing_app_id = NULL WHERE id = ?").run(
       `Thumbnail generation failed: ${error.message}`,
       imageId
     );
