@@ -25,6 +25,7 @@ Thumbs.db
 
 # Processed images
 data/processed/
+data/temp-google-photos/
 
 # Node modules (if needed for any tools)
 node_modules/
