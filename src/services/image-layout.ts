@@ -71,10 +71,18 @@ export function determineLayoutConfiguration(
     imageAspectRatio.orientation === "portrait" &&
     deviceAspectRatio.orientation === "landscape";
 
+  // Determine device orientation (square devices are treated as landscape)
+  let deviceOrientationResult: "portrait" | "landscape";
+  if (deviceAspectRatio.orientation === "portrait") {
+    deviceOrientationResult = "portrait";
+  } else {
+    deviceOrientationResult = "landscape"; // includes landscape and square
+  }
+
   return {
     deviceWidth,
     deviceHeight,
-    deviceOrientation: deviceAspectRatio.orientation === "portrait" ? "portrait" : "landscape",
+    deviceOrientation: deviceOrientationResult,
     imageAspectRatio,
     layoutType: shouldPair ? "paired" : "single",
     cropStrategy: "center", // Default to center crop, can be enhanced with smart cropping later

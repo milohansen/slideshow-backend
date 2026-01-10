@@ -8,7 +8,7 @@ import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 import type { ColorPalette } from "./image-processing.ts";
 import { calculatePairedPortraitLayout } from "./image-layout.ts";
-import { isGCSEnabled, uploadFile, localPathToGCSPath, downloadFile } from "./storage.ts";
+import { isGCSEnabled, uploadFile, localPathToGCSPath, downloadFile, parseGCSUri } from "./storage.ts";
 
 export interface CompositeImageOptions {
   outputPath: string;
@@ -69,7 +69,6 @@ export async function composePairedPortraitImages(
 
   if (image1Path.startsWith("gs://")) {
     const tempPath = await Deno.makeTempFile({ suffix: ".jpg" });
-    const { parseGCSUri } = await import("./storage.ts");
     const gcsInfo = parseGCSUri(image1Path);
     if (gcsInfo) {
       await downloadFile(gcsInfo.path, tempPath);
@@ -80,7 +79,6 @@ export async function composePairedPortraitImages(
 
   if (image2Path.startsWith("gs://")) {
     const tempPath = await Deno.makeTempFile({ suffix: ".jpg" });
-    const { parseGCSUri } = await import("./storage.ts");
     const gcsInfo = parseGCSUri(image2Path);
     if (gcsInfo) {
       await downloadFile(gcsInfo.path, tempPath);
