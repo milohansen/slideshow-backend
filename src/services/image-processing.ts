@@ -13,6 +13,7 @@ import {
   downloadFile, 
   localPathToGCSPath 
 } from "./storage.ts";
+import { determineLayoutConfiguration, type LayoutConfiguration } from "./image-layout.ts";
 
 // Thumbnail size for UI
 const THUMBNAIL_WIDTH = 300;
@@ -39,6 +40,8 @@ interface ProcessedImageData {
   height: number;
   filePath: string;
   colorPalette: ColorPalette;
+  layoutType?: "single" | "paired";
+  layoutConfiguration?: LayoutConfiguration;
 }
 
 /**
@@ -345,6 +348,16 @@ export async function processImageForDevice(
     };
   }
 
+  // Determine layout configuration for this image on this device
+  const layoutConfig = determineLayoutConfiguration(
+    image.width,
+    image.height,
+    deviceSize.width,
+    deviceSize.height
+  );
+
+  console.log(`[Processing] Layout type: ${layoutConfig.layoutType} (image: ${layoutConfig.imageAspectRatio.orientation}, device: ${layoutConfig.deviceOrientation})`);
+
   // Generate output path
   const ext = image.file_path.substring(image.file_path.lastIndexOf("."));
   const outputPath = join(
@@ -417,6 +430,8 @@ export async function processImageForDevice(
     height: deviceSize.height,
     filePath: storagePath,
     colorPalette,
+    layoutType: layoutConfig.layoutType,
+    layoutConfiguration: layoutConfig,
   };
 }
 
@@ -485,6 +500,40 @@ export function getProcessedImagesForDevice(deviceSize: string): Array<{
     SELECT id, image_id, file_path, color_palette
     FROM processed_images
     WHERE device_size = ?
+  `).all(deviceSize) as Array<{
+    id: string;
+    image_id: string;
+    file_path: string;
+    color_palette: string;
+  }>;
+
+  return results.map(r => ({
+    id: r.id,
+    imageId: r.image_id,
+    filePath: r.file_path,
+    colorPalette: JSON.parse(r.color_palette),
+  }));
+}
+
+/**
+ * Get portrait images that need pairing for a landscape device
+ * Returns images that have layoutType === "paired"
+ */
+export function getPortraitImagesForPairing(deviceSize: string): Array<{
+  id: string;
+  imageId: string;
+  filePath: string;
+  colorPalette: ColorPalette;
+}> {
+  const db = getDb();
+  
+  // Get all portrait images for this device
+  // Note: We check the original image orientation to find portraits
+  const results = db.prepare(`
+    SELECT pi.id, pi.image_id, pi.file_path, pi.color_palette
+    FROM processed_images pi
+    JOIN images i ON pi.image_id = i.id
+    WHERE pi.device_size = ? AND i.orientation = 'portrait'
   `).all(deviceSize) as Array<{
     id: string;
     image_id: string;
