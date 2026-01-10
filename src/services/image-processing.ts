@@ -12,7 +12,8 @@ import {
   isGCSEnabled, 
   uploadFile, 
   downloadFile, 
-  localPathToGCSPath 
+  localPathToGCSPath,
+  parseGCSUri
 } from "./storage.ts";
 import { determineLayoutConfiguration, type LayoutConfiguration } from "./image-layout.ts";
 
@@ -510,25 +511,50 @@ export async function processImageForDevice(
   );
   console.log(`[Processing] 💾 Output path: ${outputPath}`);
 
+  // Download source file from GCS if needed
+  let sourceFilePath = image.file_path;
+  let tempSourceFile: string | null = null;
+  
+  if (image.file_path.startsWith("gs://")) {
+    console.log(`[Processing] ☁️ Source file is in GCS, downloading: ${image.file_path}`);
+    const gcsInfo = parseGCSUri(image.file_path);
+    if (!gcsInfo) {
+      throw new Error(`Invalid GCS URI: ${image.file_path}`);
+    }
+    
+    tempSourceFile = join(Deno.makeTempDirSync(), `source-${imageId}${ext}`);
+    await downloadFile(gcsInfo.path, tempSourceFile);
+    sourceFilePath = tempSourceFile;
+    console.log(`[Processing] ✅ Downloaded source file to: ${sourceFilePath}`);
+  }
+
   // Resize image using Google Photos API if available, otherwise use ImageMagick
   console.log(`[Processing] 📸 Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
   
-  if (googlePhotosBaseUrl) {
-    // Use Google Photos API resizing with fallback to local file
-    console.log(`[Processing] ☁️ Using Google Photos API resizing for ${imageId}`);
-    await resizeImageFromGooglePhotos(
-      googlePhotosBaseUrl,
-      outputPath,
-      deviceSize.width,
-      deviceSize.height,
-      image.file_path // Fallback to local file if API fails
-    );
-  } else {
-    // Use ImageMagick for local files
-    console.log(`[Processing] 🛠️ Using ImageMagick for local file resize`);
-    await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
+  try {
+    if (googlePhotosBaseUrl) {
+      // Use Google Photos API resizing with fallback to local file
+      console.log(`[Processing] ☁️ Using Google Photos API resizing for ${imageId}`);
+      await resizeImageFromGooglePhotos(
+        googlePhotosBaseUrl,
+        outputPath,
+        deviceSize.width,
+        deviceSize.height,
+        sourceFilePath // Use downloaded file if from GCS
+      );
+    } else {
+      // Use ImageMagick for local files
+      console.log(`[Processing] 🛠️ Using ImageMagick for resize`);
+      await resizeImage(sourceFilePath, outputPath, deviceSize.width, deviceSize.height);
+    }
+    console.log(`[Processing] ✅ Resize completed`);
+  } finally {
+    // Clean up temp source file if we downloaded from GCS
+    if (tempSourceFile) {
+      console.log(`[Processing] 🧹 Cleaning up temp source file: ${tempSourceFile}`);
+      await Deno.remove(tempSourceFile).catch(() => {});
+    }
   }
-  console.log(`[Processing] ✅ Resize completed`);
 
   // Determine the final storage path
   const storagePath = isGCSEnabled() 

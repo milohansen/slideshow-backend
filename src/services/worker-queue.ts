@@ -18,7 +18,7 @@ class WorkerQueueManager {
   private workerUrl: URL;
   private imageTaskCounts = new Map<string, { total: number; completed: number; failed: number }>();
 
-  constructor(maxConcurrentWorkers = 1) {
+  constructor(maxConcurrentWorkers = 4) {
     this.maxConcurrentWorkers = maxConcurrentWorkers;
     this.workerUrl = new URL("../workers/image-processor.ts", import.meta.url);
     console.log(`[WorkerQueue] Initialized with maxConcurrentWorkers=${maxConcurrentWorkers}`);
@@ -182,7 +182,7 @@ let workerQueue: WorkerQueueManager | null = null;
 export function getWorkerQueue(): WorkerQueueManager {
   if (!workerQueue) {
     console.log(`[WorkerQueue] Creating new WorkerQueueManager instance`);
-    workerQueue = new WorkerQueueManager(1); // Limited to 1 worker for debugging
+    workerQueue = new WorkerQueueManager(4);
   }
   return workerQueue;
 }
