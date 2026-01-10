@@ -375,8 +375,8 @@ export async function ingestFromGooglePhotos(
       const db = getDb();
       db.prepare(`
         INSERT INTO images (
-          id, file_path, file_hash, width, height, aspect_ratio, orientation, google_photos_base_url, processing_status, last_modified
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+          id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(
         imageId,
         storagePath,
@@ -385,12 +385,11 @@ export async function ingestFromGooglePhotos(
         height,
         ratio,
         orientation,
-        item.mediaFile.baseUrl, // Store the Google Photos base URL for API resizing
         creationTime.toISOString()
       );
 
-      // Queue for processing
-      queueImageProcessing(imageId);
+      // Queue for processing with Google Photos URL for API resizing
+      queueImageProcessing(imageId, item.mediaFile.baseUrl);
 
       console.log(`  ✅ Ingested: ${item.filename} (${width}x${height}, ${orientation})`);
       details.push({ filename: item.filename, status: "success" });
@@ -585,8 +584,8 @@ export async function processGooglePhotosImage(
     const db = getDb();
     db.prepare(`
       INSERT INTO images (
-        id, file_path, file_hash, width, height, aspect_ratio, orientation, google_photos_base_url, processing_status, last_modified
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
     `).run(
       imageId,
       metadata.filePath,
@@ -595,12 +594,11 @@ export async function processGooglePhotosImage(
       metadata.height,
       metadata.ratio,
       metadata.orientation,
-      mediaItem.mediaFile.baseUrl, // Store the Google Photos base URL for API resizing
       metadata.lastModified.toISOString()
     );
 
-    // Step 6: Queue for device-specific processing
-    queueImageProcessing(imageId);
+    // Step 6: Queue for device-specific processing with Google Photos URL
+    queueImageProcessing(imageId, mediaItem.mediaFile.baseUrl);
 
     return {
       imageId,

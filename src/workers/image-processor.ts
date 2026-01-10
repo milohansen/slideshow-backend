@@ -6,7 +6,7 @@
 import { processImageForDevice, type DeviceSize } from "../services/image-processing.ts";
 
 self.onmessage = async (e: MessageEvent) => {
-  const { imageId, deviceName, deviceWidth, deviceHeight, outputDir } = e.data;
+  const { imageId, deviceName, deviceWidth, deviceHeight, googlePhotosBaseUrl, outputDir } = e.data;
   
   console.log(`[Worker] Processing ${imageId} for ${deviceName} (${deviceWidth}x${deviceHeight})`);
   
@@ -18,7 +18,7 @@ self.onmessage = async (e: MessageEvent) => {
     };
     
     // Process image for this specific device size
-    await processImageForDevice(imageId, deviceSize, outputDir);
+    await processImageForDevice(imageId, deviceSize, outputDir, googlePhotosBaseUrl);
     console.log(`[Worker] Successfully processed ${imageId} for ${deviceName}`);
     
     self.postMessage({

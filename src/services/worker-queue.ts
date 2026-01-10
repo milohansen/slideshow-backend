@@ -8,6 +8,7 @@ interface QueueTask {
   deviceName: string;
   deviceWidth: number;
   deviceHeight: number;
+  googlePhotosBaseUrl?: string; // Optional Google Photos URL for API resizing
 }
 
 class WorkerQueueManager {
@@ -80,6 +81,7 @@ class WorkerQueueManager {
       deviceName: task.deviceName,
       deviceWidth: task.deviceWidth,
       deviceHeight: task.deviceHeight,
+      googlePhotosBaseUrl: task.googlePhotosBaseUrl, // Pass through the optional Google Photos URL
       outputDir: "data/processed",
     });
 
@@ -168,8 +170,10 @@ export function getWorkerQueue(): WorkerQueueManager {
 
 /**
  * Queue image processing for all device sizes
+ * @param imageId - The image ID to process
+ * @param googlePhotosBaseUrl - Optional Google Photos base URL for API resizing
  */
-export async function queueImageProcessing(imageId: string) {
+export async function queueImageProcessing(imageId: string, googlePhotosBaseUrl?: string) {
   console.log(`[Processing] Starting queue for image: ${imageId}`);
   const { getDb } = await import("../db/schema.ts");
   const { generateImageThumbnail } = await import("./image-processing.ts");
@@ -219,6 +223,7 @@ export async function queueImageProcessing(imageId: string) {
     deviceName: device.name,
     deviceWidth: device.width,
     deviceHeight: device.height,
+    googlePhotosBaseUrl, // Pass through the optional Google Photos URL
   }));
 
   console.log(`[Processing] Queuing ${tasks.length} tasks for ${imageId}`);

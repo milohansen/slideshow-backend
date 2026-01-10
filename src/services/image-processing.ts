@@ -29,6 +29,7 @@ export interface ColorPalette {
   primary: string;
   secondary: string;
   tertiary: string;
+  sourceColor: string; // The dominant/seed color used for generating the scheme
   allColors: string[];
 }
 
@@ -395,11 +396,16 @@ export async function generateImageThumbnail(imageId: string): Promise<void> {
 
 /**
  * Process a single image for a specific device size
+ * @param imageId - The image ID
+ * @param deviceSize - The target device dimensions
+ * @param outputDir - Output directory for processed images
+ * @param googlePhotosBaseUrl - Optional Google Photos base URL for API resizing
  */
 export async function processImageForDevice(
   imageId: string,
   deviceSize: DeviceSize,
-  outputDir: string
+  outputDir: string,
+  googlePhotosBaseUrl?: string
 ): Promise<ProcessedImageData> {
   console.log(`[Processing] Starting processImageForDevice: ${imageId} for ${deviceSize.name}`);
   const db = getDb();
@@ -411,7 +417,6 @@ export async function processImageForDevice(
     width: number;
     height: number;
     thumbnail_path?: string;
-    google_photos_base_url?: string | null;
   } | undefined;
 
   if (!image) {
@@ -452,11 +457,11 @@ export async function processImageForDevice(
   // Resize image using Google Photos API if available, otherwise use ImageMagick
   console.log(`[Processing] Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
   
-  if (image.google_photos_base_url) {
+  if (googlePhotosBaseUrl) {
     // Use Google Photos API resizing with fallback to local file
     console.log(`[Processing] Using Google Photos API resizing for ${imageId}`);
     await resizeImageFromGooglePhotos(
-      image.google_photos_base_url,
+      googlePhotosBaseUrl,
       outputPath,
       deviceSize.width,
       deviceSize.height,
@@ -494,6 +499,7 @@ export async function processImageForDevice(
     primary: colors[0] || "#000000",
     secondary: colors[1] || "#000000",
     tertiary: colors[2] || "#000000",
+    sourceColor: colors[0] || "#000000", // Use the most dominant color as source
     allColors: colors,
   };
 
@@ -503,8 +509,8 @@ export async function processImageForDevice(
   db.prepare(`
     INSERT INTO processed_images (
       id, image_id, device_size, width, height, file_path,
-      color_primary, color_secondary, color_tertiary, color_palette
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      color_primary, color_secondary, color_tertiary, color_source, color_palette
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     processedId,
     imageId,
@@ -515,6 +521,7 @@ export async function processImageForDevice(
     colorPalette.primary,
     colorPalette.secondary,
     colorPalette.tertiary,
+    colorPalette.sourceColor,
     JSON.stringify(colorPalette)
   );
 
