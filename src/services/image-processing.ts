@@ -7,6 +7,7 @@ import { getDb } from "../db/schema.ts";
 import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
 import { crypto } from "@std/crypto";
+import { QuantizerCelebi, Score, argbFromRgb } from "@material/material-color-utilities";
 import { 
   isGCSEnabled, 
   uploadFile, 
@@ -79,17 +80,22 @@ export async function loadConfig() {
 }
 
 /**
- * Extract dominant colors from an image using ImageMagick
+ * Extract dominant colors from an image using Material Color Utilities
+ * Uses Material Design 3's quantization and scoring algorithms for better color selection
+ * @param imagePath - Path to the image file
+ * @param numColors - Number of colors to extract (default: 8)
+ * @param maxResolution - Maximum resolution for processing (default: 0 = no resize for best accuracy). Set to positive value to limit resolution.
  */
-async function extractColors(imagePath: string, numColors = 8): Promise<string[]> {
+export async function extractColors(imagePath: string, numColors = 8, maxResolution = 0): Promise<string[]> {
+  // Step 1: Extract raw RGBA pixel data using ImageMagick
+  // Resize large images to max resolution for performance
+  const resizeArg = maxResolution > 0 ? `${maxResolution}x${maxResolution}>` : "100%";
   const command = new Deno.Command("magick", {
     args: [
       imagePath,
-      "-resize", "100x100",
-      "-colors", numColors.toString(),
-      "-unique-colors",
-      "-format", "%c",
-      "histogram:info:-"
+      "-resize", resizeArg,  // Resize based on maxResolution parameter
+      "-depth", "8",
+      "rgba:-"  // Output raw RGBA bytes
     ],
     stdout: "piped",
     stderr: "piped",
@@ -99,20 +105,50 @@ async function extractColors(imagePath: string, numColors = 8): Promise<string[]
 
   if (code !== 0) {
     const error = new TextDecoder().decode(stderr);
-    throw new Error(`Failed to extract colors: ${error}`);
+    throw new Error(`Failed to extract pixels: ${error}`);
   }
 
-  const output = new TextDecoder().decode(stdout);
-  const colors: string[] = [];
+  const pixelData = new Uint8Array(stdout);
+  
+  // Step 2: Convert RGBA bytes to ARGB integers
+  const pixels: number[] = [];
+  for (let i = 0; i < pixelData.length; i += 4) {
+    const r = pixelData[i];
+    const g = pixelData[i + 1];
+    const b = pixelData[i + 2];
+    const a = pixelData[i + 3];
+    
+    // Skip fully transparent pixels
+    if (a < 255) continue;
+    
+    const argb = argbFromRgb(r, g, b);
+    pixels.push(argb);
+  }
 
-  // Parse ImageMagick histogram output
-  // Format: "count: (r,g,b) #hex color-name"
-  const lines = output.trim().split("\n");
-  for (const line of lines) {
-    const hexMatch = line.match(/#([0-9A-Fa-f]{6})/);
-    if (hexMatch) {
-      colors.push(`#${hexMatch[1]}`);
-    }
+  if (pixels.length === 0) {
+    throw new Error("No valid pixels found in image");
+  }
+
+  // Step 3: Quantize to get color histogram
+  const quantized = QuantizerCelebi.quantize(pixels, 128);
+
+  // Step 4: Score colors using Material Design principles
+  const rankedColors = Score.score(quantized, {
+    desired: numColors,
+    filter: true,  // Filter out unsuitable colors (low chroma, etc.)
+    fallbackColorARGB: 0xff4285f4  // Google Blue as fallback
+  });
+
+  // Step 5: Convert ARGB integers to hex strings
+  const colors: string[] = [];
+  for (const argb of rankedColors) {
+    const hex = '#' + (argb & 0xFFFFFF).toString(16).padStart(6, '0').toUpperCase();
+    colors.push(hex);
+  }
+
+  // Ensure we always return at least numColors (pad with fallback if needed)
+  while (colors.length < numColors && colors.length > 0) {
+    colors.push(colors[0]);  // Duplicate primary color as fallback
   }
 
   return colors;

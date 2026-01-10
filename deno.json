@@ -3,7 +3,8 @@
     "dev": "deno run -A --env --watch src/main.ts",
     "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
     "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts",
-    "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts"
+    "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts",
+    "test:colors": "deno run --allow-read --allow-run tests/color-extraction-performance.ts"
   },
   "imports": {
     "hono": "jsr:@hono/hono@^4.6.14",
@@ -14,7 +15,8 @@
     "@std/cli": "jsr:@std/cli@^1.0.9",
     "@std/crypto": "jsr:@std/crypto@^1.0.3",
     "@std/encoding": "jsr:@std/encoding@^1.0.5",
-    "arctic": "npm:arctic@^1.9.2"
+    "arctic": "npm:arctic@^1.9.2",
+    "@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0"
   },
   "compilerOptions": {
     "jsx": "precompile",
