@@ -207,7 +207,8 @@ function runMigrations(db: Database): void {
       const updateStmt = db.prepare("UPDATE images SET aspect_ratio = ? WHERE id = ?");
       
       for (const image of images) {
-        const ratio = parseFloat((image.width / image.height).toFixed(5));
+        // Prevent division by zero
+        const ratio = image.height > 0 ? parseFloat((image.width / image.height).toFixed(5)) : 1.0;
         updateStmt.run(ratio, image.id);
       }
       

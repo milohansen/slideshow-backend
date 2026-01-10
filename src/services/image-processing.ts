@@ -218,7 +218,8 @@ async function resizeImageFromGooglePhotos(
       const gcsPath = localPathToGCSPath(outputPath);
       
       // Determine MIME type from file extension
-      const ext = outputPath.substring(outputPath.lastIndexOf(".")).toLowerCase();
+      const extIndex = outputPath.lastIndexOf(".");
+      const ext = extIndex !== -1 ? outputPath.substring(extIndex).toLowerCase() : "";
       const mimeTypeMap: Record<string, string> = {
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
@@ -232,7 +233,7 @@ async function resizeImageFromGooglePhotos(
         const gcsUri = await uploadFile(outputPath, gcsPath, mimeType);
         console.log(`Uploaded to GCS: ${gcsUri}`);
         // Clean up local file after successful upload
-        await Deno.remove(outputPath).catch(() => {});
+        await Deno.remove(outputPath).catch((err) => console.warn('Failed to clean up local file:', err));
       } catch (error) {
         console.error(`Failed to upload to GCS, keeping local file:`, error);
       }
