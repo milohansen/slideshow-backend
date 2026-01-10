@@ -13,6 +13,7 @@ import {
   downloadFile, 
   localPathToGCSPath 
 } from "./storage.ts";
+import { determineLayoutConfiguration, type LayoutConfiguration } from "./image-layout.ts";
 
 // Thumbnail size for UI
 const THUMBNAIL_WIDTH = 300;
@@ -28,6 +29,7 @@ export interface ColorPalette {
   primary: string;
   secondary: string;
   tertiary: string;
+  sourceColor: string; // The dominant/seed color used for generating the scheme
   allColors: string[];
 }
 
@@ -39,6 +41,8 @@ interface ProcessedImageData {
   height: number;
   filePath: string;
   colorPalette: ColorPalette;
+  layoutType?: "single" | "paired";
+  layoutConfiguration?: LayoutConfiguration;
 }
 
 /**
@@ -157,6 +161,88 @@ export function calculatePaletteSimilarity(
 
   // Weighted average (primary is most important)
   return (primarySim * 0.5) + (secondarySim * 0.3) + (tertiarySim * 0.2);
+}
+
+/**
+ * Resize image from Google Photos using their API
+ * This avoids downloading the full original and lets Google Photos do the resizing
+ * Falls back to local file if no valid access token is available
+ */
+async function resizeImageFromGooglePhotos(
+  baseUrl: string,
+  outputPath: string,
+  width: number,
+  height: number,
+  localFallbackPath: string
+): Promise<void> {
+  await ensureDir(join(outputPath, ".."));
+
+  // Use Google Photos API to download pre-resized image
+  // Format: baseUrl=w{width}-h{height}
+  const resizedUrl = `${baseUrl}=w${width}-h${height}`;
+  
+  console.log(`[Processing] Downloading pre-resized image from Google Photos API`);
+  
+  // Get the most recent active access token
+  const db = getDb();
+  const session = db.prepare(
+    "SELECT access_token FROM auth_sessions WHERE datetime(token_expiry) > datetime('now') ORDER BY created_at DESC LIMIT 1"
+  ).get() as { access_token: string } | undefined;
+  
+  if (!session) {
+    console.warn(`[Processing] No valid auth session found, falling back to local file`);
+    // Fall back to using ImageMagick with the local file
+    await resizeImage(localFallbackPath, outputPath, width, height);
+    return;
+  }
+
+  try {
+    const response = await fetch(resizedUrl, {
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.warn(`[Processing] Google Photos API returned ${response.status}, falling back to local file`);
+      await resizeImage(localFallbackPath, outputPath, width, height);
+      return;
+    }
+
+    const imageData = await response.arrayBuffer();
+    await Deno.writeFile(outputPath, new Uint8Array(imageData));
+    
+    console.log(`[Processing] Downloaded pre-resized image (${width}x${height})`);
+    
+    // Upload to GCS if enabled
+    if (isGCSEnabled()) {
+      const gcsPath = localPathToGCSPath(outputPath);
+      
+      // Determine MIME type from file extension
+      const extIndex = outputPath.lastIndexOf(".");
+      const ext = extIndex !== -1 ? outputPath.substring(extIndex).toLowerCase() : "";
+      const mimeTypeMap: Record<string, string> = {
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+      };
+      const mimeType = mimeTypeMap[ext] || "image/jpeg";
+      
+      try {
+        const gcsUri = await uploadFile(outputPath, gcsPath, mimeType);
+        console.log(`Uploaded to GCS: ${gcsUri}`);
+        // Clean up local file after successful upload
+        await Deno.remove(outputPath).catch((err) => console.warn('Failed to clean up local file:', err));
+      } catch (error) {
+        console.error(`Failed to upload to GCS, keeping local file:`, error);
+      }
+    }
+  } catch (error) {
+    console.warn(`[Processing] Failed to use Google Photos API: ${error}, falling back to local file`);
+    await resizeImage(localFallbackPath, outputPath, width, height);
+  }
 }
 
 /**
@@ -310,11 +396,16 @@ export async function generateImageThumbnail(imageId: string): Promise<void> {
 
 /**
  * Process a single image for a specific device size
+ * @param imageId - The image ID
+ * @param deviceSize - The target device dimensions
+ * @param outputDir - Output directory for processed images
+ * @param googlePhotosBaseUrl - Optional Google Photos base URL for API resizing
  */
 export async function processImageForDevice(
   imageId: string,
   deviceSize: DeviceSize,
-  outputDir: string
+  outputDir: string,
+  googlePhotosBaseUrl?: string
 ): Promise<ProcessedImageData> {
   console.log(`[Processing] Starting processImageForDevice: ${imageId} for ${deviceSize.name}`);
   const db = getDb();
@@ -345,6 +436,16 @@ export async function processImageForDevice(
     };
   }
 
+  // Determine layout configuration for this image on this device
+  const layoutConfig = determineLayoutConfiguration(
+    image.width,
+    image.height,
+    deviceSize.width,
+    deviceSize.height
+  );
+
+  console.log(`[Processing] Layout type: ${layoutConfig.layoutType} (image: ${layoutConfig.imageAspectRatio.orientation}, device: ${layoutConfig.deviceOrientation})`);
+
   // Generate output path
   const ext = image.file_path.substring(image.file_path.lastIndexOf("."));
   const outputPath = join(
@@ -353,9 +454,23 @@ export async function processImageForDevice(
     `${imageId}${ext}`
   );
 
-  // Resize image (this will also upload to GCS if enabled)
+  // Resize image using Google Photos API if available, otherwise use ImageMagick
   console.log(`[Processing] Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
-  await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
+  
+  if (googlePhotosBaseUrl) {
+    // Use Google Photos API resizing with fallback to local file
+    console.log(`[Processing] Using Google Photos API resizing for ${imageId}`);
+    await resizeImageFromGooglePhotos(
+      googlePhotosBaseUrl,
+      outputPath,
+      deviceSize.width,
+      deviceSize.height,
+      image.file_path // Fallback to local file if API fails
+    );
+  } else {
+    // Use ImageMagick for local files
+    await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
+  }
 
   // Determine the final storage path
   const storagePath = isGCSEnabled() 
@@ -384,6 +499,7 @@ export async function processImageForDevice(
     primary: colors[0] || "#000000",
     secondary: colors[1] || "#000000",
     tertiary: colors[2] || "#000000",
+    sourceColor: colors[0] || "#000000", // Use the most dominant color as source
     allColors: colors,
   };
 
@@ -393,8 +509,8 @@ export async function processImageForDevice(
   db.prepare(`
     INSERT INTO processed_images (
       id, image_id, device_size, width, height, file_path,
-      color_primary, color_secondary, color_tertiary, color_palette
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      color_primary, color_secondary, color_tertiary, color_source, color_palette
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     processedId,
     imageId,
@@ -405,6 +521,7 @@ export async function processImageForDevice(
     colorPalette.primary,
     colorPalette.secondary,
     colorPalette.tertiary,
+    colorPalette.sourceColor,
     JSON.stringify(colorPalette)
   );
 
@@ -417,6 +534,8 @@ export async function processImageForDevice(
     height: deviceSize.height,
     filePath: storagePath,
     colorPalette,
+    layoutType: layoutConfig.layoutType,
+    layoutConfiguration: layoutConfig,
   };
 }
 
@@ -458,7 +577,8 @@ export async function processAllImages(
           console.log(`  Processing: ${image.id} for ${deviceSize.name}...`);
         }
 
-        await processImageForDevice(image.id, deviceSize, outputDir);
+        // Note: processAllImages processes local files, so no Google Photos URL
+        await processImageForDevice(image.id, deviceSize, outputDir, undefined);
         processed++;
       } catch (error) {
         console.error(`Error processing ${image.id} for ${deviceSize.name}:`, error);
@@ -485,6 +605,40 @@ export function getProcessedImagesForDevice(deviceSize: string): Array<{
     SELECT id, image_id, file_path, color_palette
     FROM processed_images
     WHERE device_size = ?
+  `).all(deviceSize) as Array<{
+    id: string;
+    image_id: string;
+    file_path: string;
+    color_palette: string;
+  }>;
+
+  return results.map(r => ({
+    id: r.id,
+    imageId: r.image_id,
+    filePath: r.file_path,
+    colorPalette: JSON.parse(r.color_palette),
+  }));
+}
+
+/**
+ * Get portrait images that need pairing for a landscape device
+ * Returns images that have layoutType === "paired"
+ */
+export function getPortraitImagesForPairing(deviceSize: string): Array<{
+  id: string;
+  imageId: string;
+  filePath: string;
+  colorPalette: ColorPalette;
+}> {
+  const db = getDb();
+  
+  // Get all portrait images for this device
+  // Note: We check the original image orientation to find portraits
+  const results = db.prepare(`
+    SELECT pi.id, pi.image_id, pi.file_path, pi.color_palette
+    FROM processed_images pi
+    JOIN images i ON pi.image_id = i.id
+    WHERE pi.device_size = ? AND i.orientation = 'portrait'
   `).all(deviceSize) as Array<{
     id: string;
     image_id: string;

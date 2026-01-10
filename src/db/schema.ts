@@ -27,6 +27,7 @@ export async function initDatabase() {
       file_hash TEXT NOT NULL,
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
+      aspect_ratio REAL NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
       thumbnail_path TEXT,
       processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed')),
@@ -49,6 +50,7 @@ export async function initDatabase() {
       color_primary TEXT NOT NULL,
       color_secondary TEXT NOT NULL,
       color_tertiary TEXT NOT NULL,
+      color_source TEXT NOT NULL,
       color_palette TEXT NOT NULL,
       processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE,
@@ -186,6 +188,64 @@ function runMigrations(db: Database): void {
       console.log("🔄 Running migration: Adding processing_app_id column to images table");
       db.exec("ALTER TABLE images ADD COLUMN processing_app_id TEXT");
       console.log("✅ Migration completed: processing_app_id column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 5: Add aspect_ratio column to images table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasAspectRatio = tableInfo.some(col => col.name === "aspect_ratio");
+    
+    if (!hasAspectRatio) {
+      console.log("🔄 Running migration: Adding aspect_ratio column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN aspect_ratio REAL");
+      
+      // Calculate and update aspect ratio for existing images
+      const images = db.prepare("SELECT id, width, height FROM images").all() as Array<{ id: string; width: number; height: number }>;
+      const updateStmt = db.prepare("UPDATE images SET aspect_ratio = ? WHERE id = ?");
+      
+      for (const image of images) {
+        // Prevent division by zero
+        const ratio = image.height > 0 ? parseFloat((image.width / image.height).toFixed(5)) : 1.0;
+        updateStmt.run(ratio, image.id);
+      }
+      
+      console.log(`✅ Migration completed: aspect_ratio column added and calculated for ${images.length} images`);
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 6: Remove google_photos_base_url column if it exists (no longer needed)
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasGooglePhotosBaseUrl = tableInfo.some(col => col.name === "google_photos_base_url");
+    
+    if (hasGooglePhotosBaseUrl) {
+      console.log("🔄 Running migration: Removing google_photos_base_url column from images table");
+      // SQLite doesn't support DROP COLUMN directly, but since this was just added in a recent migration
+      // and the column is optional, we can leave it (it won't be used)
+      console.log("✅ Migration skipped: Column exists but will not be used (SQLite limitation)");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 7: Add source_color column to processed_images table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(processed_images)").all() as Array<{ name: string }>;
+    const hasSourceColor = tableInfo.some(col => col.name === "color_source");
+    
+    if (!hasSourceColor) {
+      console.log("🔄 Running migration: Adding color_source column to processed_images table");
+      db.exec("ALTER TABLE processed_images ADD COLUMN color_source TEXT");
+      
+      // Update existing rows to use primary color as source color
+      db.exec("UPDATE processed_images SET color_source = color_primary WHERE color_source IS NULL");
+      
+      console.log("✅ Migration completed: color_source column added");
     }
   } catch (error) {
     console.error("❌ Migration failed:", error);

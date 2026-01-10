@@ -261,6 +261,8 @@ slideshow-backend/
 ├── data/
 │   ├── images/                # Original images (not tracked)
 │   └── processed/             # Processed images (not tracked)
+├── examples/
+│   └── image-processing-demo.ts # Example usage of processing pipeline
 ├── src/
 │   ├── db/
 │   │   └── schema.ts          # Database schema
@@ -268,15 +270,29 @@ slideshow-backend/
 │   │   ├── admin.ts           # Admin endpoints
 │   │   └── devices.ts         # Device endpoints
 │   ├── services/
-│   │   ├── image-ingestion.ts # Image scanning and ingestion
-│   │   ├── image-processing.ts # Resizing and color extraction
-│   │   └── slideshow-queue.ts  # Queue generation logic
+│   │   ├── image-ingestion.ts    # Image scanning and ingestion
+│   │   ├── image-processing.ts   # Resizing and color extraction
+│   │   ├── image-layout.ts       # Aspect ratio and layout calculations
+│   │   ├── image-composition.ts  # ImageMagick composite operations
+│   │   └── slideshow-queue.ts    # Queue generation logic
 │   ├── cli.ts                 # CLI tool
 │   └── main.ts                # Server entry point
 ├── deno.json                  # Deno configuration
 ├── Dockerfile                 # Container definition
+├── IMAGE_PROCESSING_PIPELINE.md # Pipeline architecture documentation
 └── README.md
 ```
+
+## Examples
+
+See the `examples/` directory for demonstration scripts:
+
+```bash
+# Run the image processing pipeline demo
+deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run examples/image-processing-demo.ts
+```
+
+For detailed information about the image processing pipeline architecture, see [IMAGE_PROCESSING_PIPELINE.md](IMAGE_PROCESSING_PIPELINE.md).
 
 ## License
 

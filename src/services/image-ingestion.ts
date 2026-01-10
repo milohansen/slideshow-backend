@@ -14,6 +14,7 @@ export interface ImageMetadata {
   fileHash: string;
   width: number;
   height: number;
+  ratio: number; // width / height rounded to 5 decimal places
   orientation: "portrait" | "landscape" | "square";
   lastModified: Date;
 }
@@ -97,12 +98,14 @@ export async function extractImageMetadata(filePath: string): Promise<ImageMetad
   const fileInfo = await Deno.stat(filePath);
   const lastModified = fileInfo.mtime || new Date();
   const orientation = determineOrientation(width, height);
+  const ratio = parseFloat((width / height).toFixed(5));
 
   return {
     filePath,
     fileHash,
     width,
     height,
+    ratio,
     orientation,
     lastModified,
   };
@@ -140,12 +143,13 @@ async function storeImageMetadata(id: string, metadata: ImageMetadata): Promise<
   db.prepare(
     `
     INSERT INTO images (
-      id, file_path, file_hash, width, height, orientation, processing_status, last_modified
-    ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+      id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
     ON CONFLICT(file_path) DO UPDATE SET
       file_hash = excluded.file_hash,
       width = excluded.width,
       height = excluded.height,
+      aspect_ratio = excluded.aspect_ratio,
       orientation = excluded.orientation,
       processing_status = 'pending',
       last_modified = excluded.last_modified
@@ -156,6 +160,7 @@ async function storeImageMetadata(id: string, metadata: ImageMetadata): Promise<
     metadata.fileHash,
     metadata.width,
     metadata.height,
+    metadata.ratio,
     metadata.orientation,
     metadata.lastModified.toISOString()
   );
@@ -344,6 +349,7 @@ export async function ingestFromGooglePhotos(
       // Extract metadata
       const width = item.mediaFile.mediaFileMetadata.width;
       const height = item.mediaFile.mediaFileMetadata.height;
+      const ratio = parseFloat((width / height).toFixed(5));
       const orientation = determineOrientation(width, height);
       const creationTime = new Date(item.createTime);
 
@@ -369,20 +375,21 @@ export async function ingestFromGooglePhotos(
       const db = getDb();
       db.prepare(`
         INSERT INTO images (
-          id, file_path, file_hash, width, height, orientation, processing_status, last_modified
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+          id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(
         imageId,
         storagePath,
         fileHash,
         width,
         height,
+        ratio,
         orientation,
         creationTime.toISOString()
       );
 
-      // Queue for processing
-      queueImageProcessing(imageId);
+      // Queue for processing with Google Photos URL for API resizing
+      queueImageProcessing(imageId, item.mediaFile.baseUrl);
 
       console.log(`  ✅ Ingested: ${item.filename} (${width}x${height}, ${orientation})`);
       details.push({ filename: item.filename, status: "success" });
@@ -404,4 +411,214 @@ export async function ingestFromGooglePhotos(
   console.log(`   Failed: ${failed}`);
 
   return { ingested, skipped, failed, details };
+}
+
+/**
+ * Initial processing pipeline for uploaded images
+ * Maintains consistent structure with Google Photos pipeline
+ */
+export interface InitialProcessingResult {
+  imageId: string;
+  metadata: ImageMetadata;
+  status: "success" | "skipped" | "failed";
+  reason?: string;
+}
+
+/**
+ * Process a single uploaded image through the initial pipeline
+ * This function provides a consistent interface for uploaded images
+ */
+export async function processUploadedImage(
+  filePath: string
+): Promise<InitialProcessingResult> {
+  try {
+    // Step 1: Extract metadata (dimensions, hash, orientation)
+    const metadata = await extractImageMetadata(filePath);
+
+    // Step 2: Check for duplicates
+    if (imageExists(metadata.fileHash)) {
+      return {
+        imageId: "",
+        metadata,
+        status: "skipped",
+        reason: "Duplicate image",
+      };
+    }
+
+    // Step 3: Store metadata in database
+    const imageId = generateImageId();
+    await storeImageMetadata(imageId, metadata);
+
+    // Step 4: Queue for device-specific processing
+    queueImageProcessing(imageId);
+
+    return {
+      imageId,
+      metadata,
+      status: "success",
+    };
+  } catch (error) {
+    return {
+      imageId: "",
+      metadata: {
+        filePath,
+        fileHash: "",
+        width: 0,
+        height: 0,
+        ratio: 1.0,
+        orientation: "landscape",
+        lastModified: new Date(),
+      },
+      status: "failed",
+      reason: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Process a single Google Photos image through the initial pipeline
+ * Maintains structural similarity with processUploadedImage for code clarity
+ */
+export async function processGooglePhotosImage(
+  accessToken: string,
+  mediaItem: PickedMediaItem,
+  tempDir: string = "data/temp-google-photos"
+): Promise<InitialProcessingResult> {
+  try {
+    // Skip videos
+    if (mediaItem.type !== "PHOTO") {
+      return {
+        imageId: "",
+        metadata: {
+          filePath: "",
+          fileHash: "",
+          width: 0,
+          height: 0,
+          ratio: 1.0,
+          orientation: "landscape",
+          lastModified: new Date(),
+        },
+        status: "skipped",
+        reason: "Not an image",
+      };
+    }
+
+    // Ensure temp directory exists
+    try {
+      await Deno.mkdir(tempDir, { recursive: true });
+    } catch {
+      // Directory already exists
+    }
+
+    // Step 1: Download image from Google Photos
+    const imageData = await downloadMediaItem(accessToken, mediaItem.mediaFile.baseUrl);
+
+    // Determine file extension from mime type
+    const ext = mediaItem.mediaFile.mimeType.split("/")[1] || "jpg";
+    const tempPath = join(tempDir, `${crypto.randomUUID()}.${ext}`);
+
+    // Save to temporary file
+    await Deno.writeFile(tempPath, imageData);
+
+    // Step 2: Extract metadata (hash for duplicate detection)
+    const fileHash = await calculateFileHash(tempPath);
+
+    // Step 3: Check for duplicates
+    if (imageExists(fileHash)) {
+      await Deno.remove(tempPath).catch(() => {});
+      const width = mediaItem.mediaFile.mediaFileMetadata.width;
+      const height = mediaItem.mediaFile.mediaFileMetadata.height;
+      const ratio = parseFloat((width / height).toFixed(5));
+      return {
+        imageId: "",
+        metadata: {
+          filePath: "", // Empty since temp file was deleted
+          fileHash,
+          width,
+          height,
+          ratio,
+          orientation: determineOrientation(width, height),
+          lastModified: new Date(mediaItem.createTime),
+        },
+        status: "skipped",
+        reason: "Duplicate image",
+      };
+    }
+
+    // Step 4: Extract full metadata
+    const width = mediaItem.mediaFile.mediaFileMetadata.width;
+    const height = mediaItem.mediaFile.mediaFileMetadata.height;
+    const ratio = parseFloat((width / height).toFixed(5));
+    const orientation = determineOrientation(width, height);
+    const creationTime = new Date(mediaItem.createTime);
+
+    const imageId = generateImageId();
+    let storagePath = tempPath;
+
+    // Upload to GCS if enabled
+    if (isGCSEnabled()) {
+      try {
+        const gcsPath = `images/originals/${imageId}.${ext}`;
+        const gcsUri = await uploadFile(tempPath, gcsPath, mediaItem.mediaFile.mimeType);
+        storagePath = gcsUri;
+        
+        // Clean up local temp file after successful upload
+        await Deno.remove(tempPath).catch(() => {});
+      } catch (error) {
+        console.error(`Failed to upload to GCS, using local path:`, error);
+      }
+    }
+
+    // Step 5: Store in database using consistent metadata structure
+    const metadata: ImageMetadata = {
+      filePath: storagePath,
+      fileHash,
+      width,
+      height,
+      ratio,
+      orientation,
+      lastModified: creationTime,
+    };
+    
+    // Store metadata in database
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO images (
+        id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+    `).run(
+      imageId,
+      metadata.filePath,
+      metadata.fileHash,
+      metadata.width,
+      metadata.height,
+      metadata.ratio,
+      metadata.orientation,
+      metadata.lastModified.toISOString()
+    );
+
+    // Step 6: Queue for device-specific processing with Google Photos URL
+    queueImageProcessing(imageId, mediaItem.mediaFile.baseUrl);
+
+    return {
+      imageId,
+      metadata,
+      status: "success",
+    };
+  } catch (error) {
+    return {
+      imageId: "",
+      metadata: {
+        filePath: "",
+        fileHash: "",
+        width: 0,
+        height: 0,
+        ratio: 1.0,
+        orientation: "landscape",
+        lastModified: new Date(),
+      },
+      status: "failed",
+      reason: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
