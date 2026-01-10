@@ -163,6 +163,64 @@ export function calculatePaletteSimilarity(
 }
 
 /**
+ * Resize image from Google Photos using their API
+ * This avoids downloading the full original and lets Google Photos do the resizing
+ */
+async function resizeImageFromGooglePhotos(
+  baseUrl: string,
+  outputPath: string,
+  width: number,
+  height: number
+): Promise<void> {
+  await ensureDir(join(outputPath, ".."));
+
+  // Use Google Photos API to download pre-resized image
+  // Format: baseUrl=w{width}-h{height}
+  const resizedUrl = `${baseUrl}=w${width}-h${height}`;
+  
+  console.log(`[Processing] Downloading pre-resized image from Google Photos API`);
+  
+  // Note: This requires an access token, which we need to get from the session
+  // For now, we'll need to get the access token from the database
+  const db = getDb();
+  const session = db.prepare("SELECT access_token FROM auth_sessions LIMIT 1").get() as { access_token: string } | undefined;
+  
+  if (!session) {
+    console.warn(`[Processing] No auth session found, falling back to original image`);
+    // Fall back to using the stored file_path
+    throw new Error("No access token available for Google Photos API");
+  }
+
+  const response = await fetch(resizedUrl, {
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to download from Google Photos API: ${response.status} ${response.statusText}`);
+  }
+
+  const imageData = await response.arrayBuffer();
+  await Deno.writeFile(outputPath, new Uint8Array(imageData));
+  
+  console.log(`[Processing] Downloaded pre-resized image (${width}x${height})`);
+  
+  // Upload to GCS if enabled
+  if (isGCSEnabled()) {
+    const gcsPath = localPathToGCSPath(outputPath);
+    try {
+      const gcsUri = await uploadFile(outputPath, gcsPath, "image/jpeg");
+      console.log(`Uploaded to GCS: ${gcsUri}`);
+      // Clean up local file after successful upload
+      await Deno.remove(outputPath).catch(() => {});
+    } catch (error) {
+      console.error(`Failed to upload to GCS, keeping local file:`, error);
+    }
+  }
+}
+
+/**
  * Resize image to target dimensions
  */
 async function resizeImage(
@@ -329,6 +387,7 @@ export async function processImageForDevice(
     width: number;
     height: number;
     thumbnail_path?: string;
+    google_photos_base_url?: string | null;
   } | undefined;
 
   if (!image) {
@@ -366,9 +425,22 @@ export async function processImageForDevice(
     `${imageId}${ext}`
   );
 
-  // Resize image (this will also upload to GCS if enabled)
+  // Resize image using Google Photos API if available, otherwise use ImageMagick
   console.log(`[Processing] Resizing ${imageId} to ${deviceSize.width}x${deviceSize.height}`);
-  await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
+  
+  if (image.google_photos_base_url) {
+    // Use Google Photos API resizing
+    console.log(`[Processing] Using Google Photos API resizing for ${imageId}`);
+    await resizeImageFromGooglePhotos(
+      image.google_photos_base_url,
+      outputPath,
+      deviceSize.width,
+      deviceSize.height
+    );
+  } else {
+    // Use ImageMagick for local files
+    await resizeImage(image.file_path, outputPath, deviceSize.width, deviceSize.height);
+  }
 
   // Determine the final storage path
   const storagePath = isGCSEnabled() 

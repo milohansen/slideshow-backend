@@ -375,8 +375,8 @@ export async function ingestFromGooglePhotos(
       const db = getDb();
       db.prepare(`
         INSERT INTO images (
-          id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+          id, file_path, file_hash, width, height, aspect_ratio, orientation, google_photos_base_url, processing_status, last_modified
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
       `).run(
         imageId,
         storagePath,
@@ -385,6 +385,7 @@ export async function ingestFromGooglePhotos(
         height,
         ratio,
         orientation,
+        item.mediaFile.baseUrl, // Store the Google Photos base URL for API resizing
         creationTime.toISOString()
       );
 
@@ -584,8 +585,8 @@ export async function processGooglePhotosImage(
     const db = getDb();
     db.prepare(`
       INSERT INTO images (
-        id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+        id, file_path, file_hash, width, height, aspect_ratio, orientation, google_photos_base_url, processing_status, last_modified
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
     `).run(
       imageId,
       metadata.filePath,
@@ -594,6 +595,7 @@ export async function processGooglePhotosImage(
       metadata.height,
       metadata.ratio,
       metadata.orientation,
+      mediaItem.mediaFile.baseUrl, // Store the Google Photos base URL for API resizing
       metadata.lastModified.toISOString()
     );
 

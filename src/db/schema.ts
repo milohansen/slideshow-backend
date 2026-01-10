@@ -30,6 +30,7 @@ export async function initDatabase() {
       aspect_ratio REAL NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
       thumbnail_path TEXT,
+      google_photos_base_url TEXT,
       processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed')),
       processing_error TEXT,
       processing_app_id TEXT,
@@ -211,6 +212,20 @@ function runMigrations(db: Database): void {
       }
       
       console.log(`✅ Migration completed: aspect_ratio column added and calculated for ${images.length} images`);
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 6: Add google_photos_base_url column to images table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
+    const hasGooglePhotosBaseUrl = tableInfo.some(col => col.name === "google_photos_base_url");
+    
+    if (!hasGooglePhotosBaseUrl) {
+      console.log("🔄 Running migration: Adding google_photos_base_url column to images table");
+      db.exec("ALTER TABLE images ADD COLUMN google_photos_base_url TEXT");
+      console.log("✅ Migration completed: google_photos_base_url column added");
     }
   } catch (error) {
     console.error("❌ Migration failed:", error);
