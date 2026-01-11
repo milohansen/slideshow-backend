@@ -3,9 +3,7 @@
  * Replaces worker-queue.ts with Cloud Run Jobs API
  */
 
-// Import Cloud Run Jobs API client
-// Note: We'll add this to deno.json imports
-let CloudRunJobsClient: any = null;
+import { JobsClient } from "@google-cloud/run";
 
 interface JobQueueConfig {
   projectId: string;
@@ -94,42 +92,20 @@ class JobQueueManager {
   private async triggerJob(): Promise<void> {
     const { config } = this;
 
-    // Lazy load the Cloud Run client
-    if (!CloudRunJobsClient) {
-      try {
-        const module = await import("npm:@google-cloud/run@^0.3.0");
-        CloudRunJobsClient = module.JobsClient;
-      } catch (error) {
-        console.error("[JobQueue] Failed to load @google-cloud/run:", error);
-        throw new Error("Cloud Run Jobs API client not available");
-      }
-    }
-
-    const client = new CloudRunJobsClient();
+    const client = new JobsClient();
     const jobPath = `projects/${config.projectId}/locations/${config.region}/jobs/${config.jobName}`;
 
     try {
       // Execute the job
       const [operation] = await client.runJob({
         name: jobPath,
-        overrides: {
-          containerOverrides: [
-            {
-              env: [
-                { name: "GCS_BUCKET_NAME", value: Deno.env.get("GCS_BUCKET_NAME") || "" },
-                { name: "BACKEND_API_URL", value: config.backendApiUrl },
-                { name: "BACKEND_AUTH_TOKEN", value: config.authToken },
-              ],
-            },
-          ],
-          taskCount: 10, // Process across 10 parallel tasks
-        },
       });
 
-      console.log(`[JobQueue] Job execution started: ${operation.name}`);
-    } catch (error: any) {
+      console.log(`[JobQueue] Job execution started: ${operation?.name || 'unknown'}`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       // Check if error is due to missing Cloud Run API
-      if (error.message?.includes("not found") || error.message?.includes("ENOENT")) {
+      if (errorMessage.includes("not found") || errorMessage.includes("ENOENT")) {
         console.warn("[JobQueue] ⚠️ Cloud Run Jobs API not available - running in local mode");
         console.warn("[JobQueue] Images will remain in 'pending' state until job is triggered manually");
         return;
