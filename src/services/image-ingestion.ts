@@ -2,10 +2,11 @@ import { crypto } from "@std/crypto";
 import { encodeHex } from "@std/encoding/hex";
 import { walk } from "@std/fs/walk";
 import { join } from "@std/path";
+import sharp from "sharp";
 import { getDb } from "../db/schema.ts";
-import { isGCSEnabled, uploadFile } from "./storage.ts";
-import { queueImageProcessing } from "./job-queue.ts";
 import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
+import { queueImageProcessing } from "./job-queue.ts";
+import { isGCSEnabled, uploadFile } from "./storage.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
@@ -17,7 +18,7 @@ export type ImageMetadata = {
   ratio: number; // width / height rounded to 5 decimal places
   orientation: "portrait" | "landscape" | "square";
   lastModified: Date;
-}
+};
 
 /**
  * Calculate SHA-256 hash of a file
@@ -33,45 +34,11 @@ async function calculateFileHash(filePath: string): Promise<string> {
  * Returns [width, height]
  */
 async function getImageDimensions(filePath: string): Promise<[number, number]> {
-  // Use ImageMagick identify command if available, otherwise use a simple approach
-  try {
-    const command = new Deno.Command("identify", {
-      args: ["-format", "%w %h", filePath],
-      stdout: "piped",
-      stderr: "piped",
-    });
-
-    const { code, stdout } = await command.output();
-
-    if (code === 0) {
-      const output = new TextDecoder().decode(stdout).trim();
-      const [width, height] = output.split(" ").map(Number);
-      return [width, height];
-    }
-  } catch {
-    // ImageMagick not available, fall through
+  const metadata = await sharp(filePath).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error(`Unable to extract dimensions from ${filePath}`);
   }
-
-  // Fallback: Try using ffprobe for image dimensions
-  try {
-    const command = new Deno.Command("ffprobe", {
-      args: ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=s=x:p=0", filePath],
-      stdout: "piped",
-      stderr: "piped",
-    });
-
-    const { code, stdout } = await command.output();
-
-    if (code === 0) {
-      const output = new TextDecoder().decode(stdout).trim();
-      const [width, height] = output.split("x").map(Number);
-      return [width, height];
-    }
-  } catch {
-    // ffprobe not available
-  }
-
-  throw new Error(`Unable to extract dimensions from ${filePath}. Please install ImageMagick or ffmpeg.`);
+  return [metadata.width, metadata.height];
 }
 
 /**
@@ -363,7 +330,7 @@ export async function ingestFromGooglePhotos(
           const gcsUri = await uploadFile(tempPath, gcsPath, item.mediaFile.mimeType);
           storagePath = gcsUri;
           console.log(`    ☁️  Uploaded to GCS: ${gcsUri}`);
-          
+
           // Clean up local temp file after successful upload
           await Deno.remove(tempPath).catch(() => {});
         } catch (error) {
@@ -373,32 +340,25 @@ export async function ingestFromGooglePhotos(
 
       // Store in database
       const db = getDb();
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO images (
           id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
         ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-      `).run(
-        imageId,
-        storagePath,
-        fileHash,
-        width,
-        height,
-        ratio,
-        orientation,
-        creationTime.toISOString()
-      );
+      `
+      ).run(imageId, storagePath, fileHash, width, height, ratio, orientation, creationTime.toISOString());
 
       // Queue for processing
       // Note: Google Photos API resizing feature preserved in worker-queue.ts for future use
       queueImageProcessing(imageId);
 
-      console.log(`  ✅ Ingested: ${item.filename} (${width}x${height}, ${orientation})`);
-      details.push({ filename: item.filename, status: "success" });
+      console.log(`  ✅ Ingested: ${item.mediaFile.filename} (${width}x${height}, ${orientation})`);
+      details.push({ filename: item.mediaFile.filename, status: "success" });
       ingested++;
     } catch (error) {
-      console.error(`  ❌ Failed to ingest ${item.filename}:`, error);
+      console.error(`  ❌ Failed to ingest ${item.mediaFile.filename}:`, error);
       details.push({
-        filename: item.filename,
+        filename: item.mediaFile.filename,
         status: "failed",
         error: error instanceof Error ? error.message : "Unknown error",
       });
@@ -423,15 +383,13 @@ export type InitialProcessingResult = {
   metadata: ImageMetadata;
   status: "success" | "skipped" | "failed";
   reason?: string;
-}
+};
 
 /**
  * Process a single uploaded image through the initial pipeline
  * This function provides a consistent interface for uploaded images
  */
-export async function processUploadedImage(
-  filePath: string
-): Promise<InitialProcessingResult> {
+export async function processUploadedImage(filePath: string): Promise<InitialProcessingResult> {
   try {
     // Step 1: Extract metadata (dimensions, hash, orientation)
     const metadata = await extractImageMetadata(filePath);
@@ -480,11 +438,7 @@ export async function processUploadedImage(
  * Process a single Google Photos image through the initial pipeline
  * Maintains structural similarity with processUploadedImage for code clarity
  */
-export async function processGooglePhotosImage(
-  accessToken: string,
-  mediaItem: PickedMediaItem,
-  tempDir: string = "data/temp-google-photos"
-): Promise<InitialProcessingResult> {
+export async function processGooglePhotosImage(accessToken: string, mediaItem: PickedMediaItem, tempDir: string = "data/temp-google-photos"): Promise<InitialProcessingResult> {
   try {
     // Skip videos
     if (mediaItem.type !== "PHOTO") {
@@ -562,7 +516,7 @@ export async function processGooglePhotosImage(
         const gcsPath = `images/originals/${imageId}.${ext}`;
         const gcsUri = await uploadFile(tempPath, gcsPath, mediaItem.mediaFile.mimeType);
         storagePath = gcsUri;
-        
+
         // Clean up local temp file after successful upload
         await Deno.remove(tempPath).catch(() => {});
       } catch (error) {
@@ -580,23 +534,16 @@ export async function processGooglePhotosImage(
       orientation,
       lastModified: creationTime,
     };
-    
+
     // Store metadata in database
     const db = getDb();
-    db.prepare(`
+    db.prepare(
+      `
       INSERT INTO images (
         id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified
       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
-    `).run(
-      imageId,
-      metadata.filePath,
-      metadata.fileHash,
-      metadata.width,
-      metadata.height,
-      metadata.ratio,
-      metadata.orientation,
-      metadata.lastModified.toISOString()
-    );
+    `
+    ).run(imageId, metadata.filePath, metadata.fileHash, metadata.width, metadata.height, metadata.ratio, metadata.orientation, metadata.lastModified.toISOString());
 
     // Step 6: Queue for device-specific processing
     // Note: Google Photos API resizing feature preserved in worker-queue.ts for future use

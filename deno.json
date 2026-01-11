@@ -17,7 +17,8 @@
     "@std/crypto": "jsr:@std/crypto@^1.0.3",
     "@std/encoding": "jsr:@std/encoding@^1.0.5",
     "arctic": "npm:arctic@^1.9.2",
-    "@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0"
+    "@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0",
+    "sharp": "npm:sharp@^0.33.5"
   },
   "compilerOptions": {
     "jsx": "precompile",

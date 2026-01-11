@@ -1,12 +1,6 @@
 # Use official Deno image
 FROM denoland/deno:2.6.4
 
-# Install ImageMagick and ffmpeg
-RUN apt-get update && apt-get install -y \
-    imagemagick \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
 # Set working directory
 WORKDIR /app
 

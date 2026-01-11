@@ -1,14 +1,14 @@
 /**
- * Image composition service for later-stage processing with ImageMagick
+ * Image composition service for later-stage processing with sharp
  * This module handles composite operations like pairing portrait images,
  * adding overlays, and creating combined layouts
  */
 
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
-import type { ColorPalette } from "./image-processing.ts";
+import sharp from "sharp";
 import { calculatePairedPortraitLayout } from "./image-layout.ts";
-import { isGCSEnabled, uploadFile, localPathToGCSPath, downloadFile, parseGCSUri } from "./storage.ts";
+import { downloadFile, isGCSEnabled, localPathToGCSPath, parseGCSUri, uploadFile } from "./storage.ts";
 
 export type CompositeImageOptions = {
   outputPath: string;
@@ -98,52 +98,28 @@ export async function composePairedPortraitImages(
     tempFiles.push(temp2);
     await resizeAndCropImage(localImage2Path, temp2, halfWidth, deviceHeight);
 
-    // Step 3: Create a blank canvas with background color
-    const canvas = await Deno.makeTempFile({ suffix: ".jpg" });
-    tempFiles.push(canvas);
-    
-    const createCanvasCommand = new Deno.Command("magick", {
-      args: [
-        "-size",
-        `${deviceWidth}x${deviceHeight}`,
-        `xc:${backgroundColor}`,
-        canvas,
-      ],
-      stdout: "piped",
-      stderr: "piped",
-    });
+    // Step 3 & 4: Create composite using sharp
+    // Load both resized images
+    const [img1Buffer, img2Buffer] = await Promise.all([
+      sharp(temp1).toBuffer(),
+      sharp(temp2).toBuffer()
+    ]);
 
-    const canvasResult = await createCanvasCommand.output();
-    if (canvasResult.code !== 0) {
-      const error = new TextDecoder().decode(canvasResult.stderr);
-      throw new Error(`Failed to create canvas: ${error}`);
-    }
-
-    // Step 4: Composite both images onto the canvas
-    const compositeCommand = new Deno.Command("magick", {
-      args: [
-        canvas,
-        temp1,
-        "-geometry",
-        `${halfWidth}x${deviceHeight}+0+0`,
-        "-composite",
-        temp2,
-        "-geometry",
-        `${halfWidth}x${deviceHeight}+${halfWidth}+0`,
-        "-composite",
-        "-quality",
-        quality.toString(),
-        outputPath,
-      ],
-      stdout: "piped",
-      stderr: "piped",
-    });
-
-    const compositeResult = await compositeCommand.output();
-    if (compositeResult.code !== 0) {
-      const error = new TextDecoder().decode(compositeResult.stderr);
-      throw new Error(`Failed to composite images: ${error}`);
-    }
+    // Create canvas with background color and composite both images
+    await sharp({
+      create: {
+        width: deviceWidth,
+        height: deviceHeight,
+        channels: 3,
+        background: backgroundColor
+      }
+    })
+    .composite([
+      { input: img1Buffer, top: 0, left: 0 },
+      { input: img2Buffer, top: 0, left: halfWidth }
+    ])
+    .jpeg({ quality })
+    .toFile(outputPath);
 
     // Upload to GCS if enabled
     if (isGCSEnabled()) {
@@ -177,27 +153,12 @@ async function resizeAndCropImage(
   width: number,
   height: number
 ): Promise<void> {
-  const command = new Deno.Command("magick", {
-    args: [
-      sourcePath,
-      "-resize",
-      `${width}x${height}^`,
-      "-gravity",
-      "center",
-      "-extent",
-      `${width}x${height}`,
-      outputPath,
-    ],
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  const { code, stderr } = await command.output();
-
-  if (code !== 0) {
-    const error = new TextDecoder().decode(stderr);
-    throw new Error(`Failed to resize and crop image: ${error}`);
-  }
+  await sharp(sourcePath)
+    .resize(width, height, {
+      fit: "cover",
+      position: "centre"
+    })
+    .toFile(outputPath);
 }
 
 /**
