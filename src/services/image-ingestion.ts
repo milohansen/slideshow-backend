@@ -9,7 +9,7 @@ import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
 
-export interface ImageMetadata {
+export type ImageMetadata = {
   filePath: string;
   fileHash: string;
   width: number;
@@ -417,7 +417,7 @@ export async function ingestFromGooglePhotos(
  * Initial processing pipeline for uploaded images
  * Maintains consistent structure with Google Photos pipeline
  */
-export interface InitialProcessingResult {
+export type InitialProcessingResult = {
   imageId: string;
   metadata: ImageMetadata;
   status: "success" | "skipped" | "failed";

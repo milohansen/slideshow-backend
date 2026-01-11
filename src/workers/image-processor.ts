@@ -63,16 +63,15 @@ self.addEventListener('message', async (e: MessageEvent) => {
     console.log(`[Worker] 🎬 Starting processing ${imageId} for ${deviceName} (${deviceWidth}x${deviceHeight})`);
     console.log(`[Worker] 📦 Received data:`, { imageId, deviceName, deviceWidth, deviceHeight, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
     
-    try {
-      const deviceSize: DeviceSize = {
-        name: deviceName,
-        width: deviceWidth,
-        height: deviceHeight,
-      };
-      
-      // Process image for this specific device size (without database)
-      console.log(`[Worker] 🔧 Calling processImageForDeviceWorker...`);
-      const result = await processImageForDeviceWorker(imageData, deviceSize, outputDir, googlePhotosBaseUrl);
+    const deviceSize: DeviceSize = {
+      name: deviceName,
+      width: deviceWidth,
+      height: deviceHeight,
+    };
+    
+    // Process image for this specific device size (without database)
+    console.log(`[Worker] 🔧 Calling processImageForDeviceWorker...`);
+    const result = await processImageForDeviceWorker(imageData, deviceSize, outputDir, googlePhotosBaseUrl);
     console.log(`[Worker] ✅ processImageForDeviceWorker completed for ${imageData.id}/${deviceName}:`, result.processedId);
     
     console.log(`[Worker] 📤 Posting success message with result data...`);
@@ -82,18 +81,18 @@ self.addEventListener('message', async (e: MessageEvent) => {
     });
     console.log(`[Worker] ✅ Success message posted for ${imageData.id}/${deviceName}`);
   } catch (error) {
-    console.error(`[Worker] ❌ Failed to process ${imageData.id} for ${deviceName}:`, error);
+    console.error(`[Worker] ❌ Failed to process ${imageId} for ${deviceName}:`, error);
     console.error(`[Worker] Error stack:`, error instanceof Error ? error.stack : 'No stack trace');
     console.log(`[Worker] 📤 Posting error message...`);
     self.postMessage({
       success: false,
-      imageId: imageData.id,
+      imageId: imageId,
       deviceName,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    console.log(`[Worker] ❌ Error message posted for ${imageData.id}/${deviceName}`);
+    console.log(`[Worker] ❌ Error message posted for ${imageId}/${deviceName}`);
   } finally {
-    console.log(`[Worker] 🔚 Closing worker for ${imageData.id}/${deviceName}`);
+    console.log(`[Worker] 🔚 Closing worker for ${imageId}/${deviceName}`);
     self.close();
   }
 });

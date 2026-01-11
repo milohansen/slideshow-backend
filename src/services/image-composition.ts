@@ -10,7 +10,7 @@ import type { ColorPalette } from "./image-processing.ts";
 import { calculatePairedPortraitLayout } from "./image-layout.ts";
 import { isGCSEnabled, uploadFile, localPathToGCSPath, downloadFile, parseGCSUri } from "./storage.ts";
 
-export interface CompositeImageOptions {
+export type CompositeImageOptions = {
   outputPath: string;
   deviceWidth: number;
   deviceHeight: number;
@@ -18,7 +18,7 @@ export interface CompositeImageOptions {
   quality?: number;
 }
 
-export interface PairedPortraitCompositeOptions extends CompositeImageOptions {
+export type PairedPortraitCompositeOptions = CompositeImageOptions & {
   image1Path: string;
   image1Width: number;
   image1Height: number;

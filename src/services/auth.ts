@@ -9,7 +9,7 @@ export const google = new Google(
   Deno.env.get("REDIRECT_URI") || "http://localhost:8080/auth/google/callback"
 );
 
-export interface UserSession {
+export type UserSession = {
   id: string;
   user_id: string;
   email: string | null;

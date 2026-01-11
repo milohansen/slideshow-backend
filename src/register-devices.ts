@@ -5,7 +5,7 @@
 
 import { initDatabase } from "./db/schema.ts";
 
-interface Device {
+type Device = {
   id: string;
   name: string;
   area: string;

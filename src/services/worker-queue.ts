@@ -5,7 +5,7 @@
 
 import type { ColorPalette } from "./image-processing.ts";
 
-interface QueueTask {
+type QueueTask = {
   imageId: string;
   deviceName: string;
   deviceWidth: number;

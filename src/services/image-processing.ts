@@ -21,7 +21,7 @@ import { determineLayoutConfiguration, type LayoutConfiguration } from "./image-
 const THUMBNAIL_WIDTH = 300;
 const THUMBNAIL_HEIGHT = 200;
 
-export interface DeviceSize {
+export type DeviceSize = {
   name: string;
   width: number;
   height: number;
@@ -473,7 +473,7 @@ export async function processImageForDeviceWorker(
   filePath: string;
   colorPalette: ColorPalette;
   layoutType: "single" | "paired";
-  layoutConfiguration: any;
+  layoutConfiguration: LayoutConfiguration;
 }> {
   const imageId = imageData.id;
   console.log(`[Processing] 🎯 Starting processImageForDeviceWorker: ${imageId} for ${deviceSize.name}`);

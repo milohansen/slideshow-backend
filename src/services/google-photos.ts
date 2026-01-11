@@ -2,7 +2,7 @@ import { getDb } from "../db/schema.ts";
 
 const PICKER_API_BASE = "https://photospicker.googleapis.com/v1";
 
-export interface PickerSession {
+export type PickerSession = {
   id: string;
   user_id: string;
   picker_session_id: string;

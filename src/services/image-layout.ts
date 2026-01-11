@@ -4,14 +4,14 @@
  * Google Photos downloads and direct uploads
  */
 
-export interface AspectRatio {
+export type AspectRatio = {
   width: number;
   height: number;
   ratio: number;
   orientation: "portrait" | "landscape" | "square";
 }
 
-export interface LayoutConfiguration {
+export type LayoutConfiguration = {
   deviceWidth: number;
   deviceHeight: number;
   deviceOrientation: "portrait" | "landscape";

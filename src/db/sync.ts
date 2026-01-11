@@ -6,7 +6,7 @@
 import { Storage } from "@google-cloud/storage";
 import { getDb } from "./schema.ts";
 
-interface DBSyncConfig {
+type DBSyncConfig = {
   bucketName: string;
   dbPath: string;
   gcsDbPath: string;
@@ -15,7 +15,7 @@ interface DBSyncConfig {
   instanceId: string;
 }
 
-interface Lease {
+type Lease = {
   instanceId: string;
   acquiredAt: string;
   expiresAt: string;
@@ -115,8 +115,8 @@ export class DatabaseSyncManager {
       // Lease is held by another instance
       return false;
       
-    } catch (error: any) {
-      if (error.code === 412) {
+    } catch (error: unknown) {
+      if ((error as { code?: number }).code === 412) {
         // Precondition failed - someone else got the lease
         return false;
       }
@@ -295,8 +295,8 @@ export class DatabaseSyncManager {
   /**
    * Upload WAL and SHM files
    */
-  private async uploadWalFiles(bucket: any): Promise<void> {
-    try {
+  private async uploadWalFiles(bucket: ReturnType<Storage['bucket']>): Promise<void> {
+    try{
       // Check if WAL file exists
       const walPath = `${this.config.dbPath}-wal`;
       try {

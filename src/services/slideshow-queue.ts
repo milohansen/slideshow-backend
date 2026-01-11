@@ -10,7 +10,7 @@ import {
   type ColorPalette,
 } from "./image-processing.ts";
 
-interface QueueItem {
+type QueueItem = {
   imageId: string;
   filePath: string;
   colorPalette: ColorPalette;
@@ -19,7 +19,7 @@ interface QueueItem {
   pairedFilePath?: string;
 }
 
-interface SlideshowQueue {
+type SlideshowQueue = {
   deviceId: string;
   queue: QueueItem[];
   currentIndex: number;
