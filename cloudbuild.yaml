@@ -17,7 +17,7 @@ steps:
       - '--image'
       - 'gcr.io/$PROJECT_ID/slideshow-backend:$COMMIT_SHA'
       - '--region'
-      - 'us-central1'
+      - 'northamerica-northeast1'
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
@@ -29,6 +29,8 @@ steps:
       - '10'
       - '--timeout'
       - '300'
+      - '--set-env-vars'
+      - 'GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=northamerica-northeast1,PROCESSOR_JOB_NAME=slideshow-processor'
 
 images:
   - 'gcr.io/$PROJECT_ID/slideshow-backend:$COMMIT_SHA'
