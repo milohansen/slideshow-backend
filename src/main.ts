@@ -4,12 +4,15 @@ import { cors } from "hono/cors";
 import { serveStatic } from "hono/deno";
 import { initDatabase, getDb } from "./db/schema.ts";
 import { initStorage } from "./services/storage.ts";
+import { initMetadataSync, stopMetadataSync } from "./services/metadata-sync.ts";
+import { initJobQueue, shutdownJobQueue } from "./services/job-queue.ts";
 import { DatabaseSyncManager } from "./db/sync.ts";
 import { crypto } from "@std/crypto";
 import deviceRoutes from "./routes/devices.ts";
 import adminRoutes from "./routes/admin.ts";
 import uiRoutes from "./routes/ui.tsx";
 import authRoutes from "./routes/auth.ts";
+import processingRoutes from "./routes/processing.ts";
 import { requireAuth, optionalAuth } from "./middleware/auth.ts";
 
 const app = new Hono();
@@ -37,7 +40,7 @@ async function recoverOrphanedProcessingImages() {
     if (orphanedImages.length > 0) {
       console.log(`🔄 Found ${orphanedImages.length} orphaned processing images, re-queueing...`);
       
-      const { queueImageProcessing } = await import("./services/worker-queue.ts");
+      const { queueImageProcessing } = await import("./services/job-queue.ts");
       for (const image of orphanedImages) {
         console.log(`  Re-queueing ${image.id} (was owned by ${image.processing_app_id || 'unknown'})`);
         // Reset status to pending before re-queueing
@@ -88,7 +91,7 @@ async function processUnprocessedImages() {
     if (unprocessedImages.length > 0) {
       console.log(`📸 Found ${unprocessedImages.length} images to process on startup (${totalDevices} device sizes each)`);
       
-      const { queueImageProcessing } = await import("./services/worker-queue.ts");
+      const { queueImageProcessing } = await import("./services/job-queue.ts");
       for (const image of unprocessedImages) {
         queueImageProcessing(image.id);
       }
@@ -131,6 +134,12 @@ if (gcsBucketName && Deno.env.get("DENO_ENV") === "production") {
 // NOW initialize database (will use downloaded file if it exists)
 await initDatabase();
 
+// Initialize metadata sync service (if GCS is enabled)
+initMetadataSync();
+
+// Initialize job queue service
+initJobQueue();
+
 // Recover orphaned processing images first (don't block server start)
 recoverOrphanedProcessingImages().catch(err => 
   console.error("Error recovering orphaned images:", err)
@@ -163,6 +172,11 @@ app.route("/ui", uiRoutes);
 // Device API routes (public for now - devices authenticate via device ID)
 app.route("/api/devices", deviceRoutes);
 
+// Processing API routes (authenticated by processor service account)
+app.route("/api/processing", processingRoutes);
+app.route("/api/processed-images", processingRoutes);
+app.route("/api/images", processingRoutes);
+
 // Protected admin routes (require authentication)
 app.use("/api/admin/*", requireAuth);
 app.route("/api/admin", adminRoutes);
@@ -188,6 +202,12 @@ const shutdown = async (signal: string) => {
   console.log(`\n${signal} received, starting graceful shutdown...`);
   
   try {
+    // Flush pending job queue
+    await shutdownJobQueue();
+    
+    // Stop metadata sync
+    stopMetadataSync();
+    
     // Shutdown database sync first
     if (dbSync) {
       await dbSync.shutdown();

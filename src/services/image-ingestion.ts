@@ -4,7 +4,7 @@ import { walk } from "@std/fs/walk";
 import { join } from "@std/path";
 import { getDb } from "../db/schema.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
-import { queueImageProcessing } from "./worker-queue.ts";
+import { queueImageProcessing } from "./job-queue.ts";
 import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
 
 const SUPPORTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
@@ -388,8 +388,9 @@ export async function ingestFromGooglePhotos(
         creationTime.toISOString()
       );
 
-      // Queue for processing with Google Photos URL for API resizing
-      queueImageProcessing(imageId, item.mediaFile.baseUrl);
+      // Queue for processing
+      // Note: Google Photos API resizing feature preserved in worker-queue.ts for future use
+      queueImageProcessing(imageId);
 
       console.log(`  ✅ Ingested: ${item.filename} (${width}x${height}, ${orientation})`);
       details.push({ filename: item.filename, status: "success" });
@@ -597,8 +598,9 @@ export async function processGooglePhotosImage(
       metadata.lastModified.toISOString()
     );
 
-    // Step 6: Queue for device-specific processing with Google Photos URL
-    queueImageProcessing(imageId, mediaItem.mediaFile.baseUrl);
+    // Step 6: Queue for device-specific processing
+    // Note: Google Photos API resizing feature preserved in worker-queue.ts for future use
+    queueImageProcessing(imageId);
 
     return {
       imageId,
