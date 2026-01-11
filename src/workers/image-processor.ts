@@ -10,36 +10,69 @@ import { initStorage } from "../services/storage.ts";
 
 console.log("[Worker] 📚 Imports completed, initializing services for worker...");
 
-// Initialize storage in worker context (needed for GCS operations)
-initStorage();
-console.log("[Worker] ✅ Storage initialized in worker");
+// Set up global error handler to catch any unhandled errors
+self.addEventListener('error', (e: ErrorEvent) => {
+  console.error("[Worker] 💥 Unhandled error in worker:", e.error || e.message);
+  self.postMessage({
+    success: false,
+    imageId: 'unknown',
+    deviceName: 'unknown',
+    error: e.error?.message || e.message || 'Unknown worker error',
+  });
+});
+
+self.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+  console.error("[Worker] 💥 Unhandled promise rejection in worker:", e.reason);
+  self.postMessage({
+    success: false,
+    imageId: 'unknown',
+    deviceName: 'unknown',
+    error: e.reason?.message || String(e.reason) || 'Unknown promise rejection',
+  });
+});
+
+try {
+  // Initialize storage in worker context (needed for GCS operations)
+  initStorage();
+  console.log("[Worker] ✅ Storage initialized in worker");
+} catch (error) {
+  console.error("[Worker] ❌ Failed to initialize storage:", error);
+  throw error;
+}
 
 console.log("[Worker] 📚 Setting up message handler");
 
 // Use addEventListener instead of self.onmessage
 self.addEventListener('message', async (e: MessageEvent) => {
-  console.log("[Worker] 📨 message event listener called!");
-  const { imageData, deviceName, deviceWidth, deviceHeight, googlePhotosBaseUrl, outputDir } = e.data;
-  
-  // Send ready message immediately after loading
-  if (!imageData) {
-    console.log("[Worker] ✅ No image data, this must be initialization");
-    return;
-  }
-  
-  console.log(`[Worker] 🎬 Starting processing ${imageData.id} for ${deviceName} (${deviceWidth}x${deviceHeight})`);
-  console.log(`[Worker] 📦 Received data:`, { imageId: imageData.id, deviceName, deviceWidth, deviceHeight, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
+  let imageId = 'unknown';
+  let deviceName = 'unknown';
   
   try {
-    const deviceSize: DeviceSize = {
-      name: deviceName,
-      width: deviceWidth,
-      height: deviceHeight,
-    };
+    console.log("[Worker] 📨 message event listener called!");
+    const { imageData, deviceName: dName, deviceWidth, deviceHeight, googlePhotosBaseUrl, outputDir } = e.data;
     
-    // Process image for this specific device size (without database)
-    console.log(`[Worker] 🔧 Calling processImageForDeviceWorker...`);
-    const result = await processImageForDeviceWorker(imageData, deviceSize, outputDir, googlePhotosBaseUrl);
+    // Send ready message immediately after loading
+    if (!imageData) {
+      console.log("[Worker] ✅ No image data, this must be initialization");
+      return;
+    }
+    
+    imageId = imageData.id;
+    deviceName = dName;
+    
+    console.log(`[Worker] 🎬 Starting processing ${imageId} for ${deviceName} (${deviceWidth}x${deviceHeight})`);
+    console.log(`[Worker] 📦 Received data:`, { imageId, deviceName, deviceWidth, deviceHeight, outputDir, hasGooglePhotosUrl: !!googlePhotosBaseUrl });
+    
+    try {
+      const deviceSize: DeviceSize = {
+        name: deviceName,
+        width: deviceWidth,
+        height: deviceHeight,
+      };
+      
+      // Process image for this specific device size (without database)
+      console.log(`[Worker] 🔧 Calling processImageForDeviceWorker...`);
+      const result = await processImageForDeviceWorker(imageData, deviceSize, outputDir, googlePhotosBaseUrl);
     console.log(`[Worker] ✅ processImageForDeviceWorker completed for ${imageData.id}/${deviceName}:`, result.processedId);
     
     console.log(`[Worker] 📤 Posting success message with result data...`);

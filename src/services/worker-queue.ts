@@ -3,6 +3,8 @@
  * Manages concurrent worker execution with throttling
  */
 
+import type { ColorPalette } from "./image-processing.ts";
+
 interface QueueTask {
   imageId: string;
   deviceName: string;
@@ -130,8 +132,13 @@ class WorkerQueueManager {
 
     worker.onerror = (e: ErrorEvent) => {
       console.error(`[Queue] ❌ Worker error for ${task.imageId}/${task.deviceName}:`, e.message);
-      console.error(`[Queue] Error details:`, e);
-      this.onWorkerComplete(task.imageId, false, e.message);
+      console.error(`[Queue] Error type:`, e.type);
+      console.error(`[Queue] Error filename:`, e.filename);
+      console.error(`[Queue] Error lineno:`, e.lineno);
+      console.error(`[Queue] Error colno:`, e.colno);
+      console.error(`[Queue] Full error event:`, e);
+      const errorMsg = e.message || e.error?.message || 'Worker crashed without error message';
+      this.onWorkerComplete(task.imageId, false, errorMsg);
     };
     
     // Post task data to worker immediately
@@ -156,7 +163,7 @@ class WorkerQueueManager {
     width: number;
     height: number;
     filePath: string;
-    colorPalette: any;
+    colorPalette: ColorPalette;
   }) {
     const { getDb } = await import("../db/schema.ts");
     const db = getDb();
@@ -294,8 +301,12 @@ export async function queueImageProcessing(imageId: string, googlePhotosBaseUrl?
     await generateImageThumbnail(imageId);
   } catch (error) {
     console.error(`[Processing] Failed to generate thumbnail for ${imageId}:`, error);
+    let message = 'Unknown error';
+    if (error instanceof Error) {
+      message = error.message;
+    }
     db.prepare("UPDATE images SET processing_status = 'failed', processing_error = ?, processing_app_id = NULL WHERE id = ?").run(
-      `Thumbnail generation failed: ${error.message}`,
+      `Thumbnail generation failed: ${message}`,
       imageId
     );
     return;

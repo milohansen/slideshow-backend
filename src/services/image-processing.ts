@@ -27,7 +27,7 @@ export interface DeviceSize {
   height: number;
 }
 
-export interface ColorPalette {
+export type ColorPalette = {
   primary: string;
   secondary: string;
   tertiary: string;
@@ -35,7 +35,7 @@ export interface ColorPalette {
   allColors: string[];
 }
 
-interface ProcessedImageData {
+type ProcessedImageData = {
   id: string;
   imageId: string;
   deviceSize: string;
