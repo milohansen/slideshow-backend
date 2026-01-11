@@ -10,20 +10,27 @@ import {
 
 /**
  * Middleware to require authentication for protected routes
- * Redirects to login if not authenticated
+ * Returns JSON error for API routes, redirects for UI routes
  */
 export async function requireAuth(c: Context, next: Next) {
   const sessionId = getCookie(c, "session_id");
+  const isApiRoute = c.req.path.startsWith("/api/");
 
   if (!sessionId) {
-    console.log("🔒 No session - redirecting to login");
+    console.log("🔒 No session - " + (isApiRoute ? "returning 401" : "redirecting to login"));
+    if (isApiRoute) {
+      return c.json({ error: "Not authenticated" }, 401);
+    }
     return c.redirect("/auth/google");
   }
 
   const session = getSessionById(sessionId);
 
   if (!session) {
-    console.log("🔒 Invalid session - redirecting to login");
+    console.log("🔒 Invalid session - " + (isApiRoute ? "returning 401" : "redirecting to login"));
+    if (isApiRoute) {
+      return c.json({ error: "Invalid session" }, 401);
+    }
     return c.redirect("/auth/google");
   }
 
@@ -51,10 +58,16 @@ export async function requireAuth(c: Context, next: Next) {
         console.log("✅ Token refreshed successfully");
       } catch (error) {
         console.error("❌ Token refresh failed:", error);
+        if (isApiRoute) {
+          return c.json({ error: "Token refresh failed" }, 401);
+        }
         return c.redirect("/auth/google");
       }
     } else {
-      console.log("🔒 Token expired and no refresh token - redirecting to login");
+      console.log("🔒 Token expired and no refresh token - " + (isApiRoute ? "returning 401" : "redirecting to login"));
+      if (isApiRoute) {
+        return c.json({ error: "Session expired" }, 401);
+      }
       return c.redirect("/auth/google");
     }
   }
