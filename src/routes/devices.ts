@@ -151,4 +151,47 @@ devices.post("/", async (c) => {
   return c.json({ success: true, deviceId: id });
 });
 
+// Update device
+devices.put("/:deviceId", async (c) => {
+  const deviceId = c.req.param("deviceId");
+  const body = await c.req.json();
+  const { name, width, height, orientation } = body;
+  
+  if (!name || !width || !height || !orientation) {
+    return c.json({ error: "Missing required fields" }, 400);
+  }
+  
+  const db = getDb();
+  
+  // Check if device exists
+  const existing = db.prepare("SELECT id FROM devices WHERE id = ?").get(deviceId);
+  if (!existing) {
+    return c.json({ error: "Device not found" }, 404);
+  }
+  
+  db.prepare(`
+    UPDATE devices 
+    SET name = ?, width = ?, height = ?, orientation = ?
+    WHERE id = ?
+  `).run(name, width, height, orientation, deviceId);
+  
+  return c.json({ success: true, deviceId });
+});
+
+// Delete device
+devices.delete("/:deviceId", (c) => {
+  const deviceId = c.req.param("deviceId");
+  const db = getDb();
+  
+  // Check if device exists
+  const existing = db.prepare("SELECT id FROM devices WHERE id = ?").get(deviceId);
+  if (!existing) {
+    return c.json({ error: "Device not found" }, 404);
+  }
+  
+  db.prepare("DELETE FROM devices WHERE id = ?").run(deviceId);
+  
+  return c.json({ success: true });
+});
+
 export default devices;
