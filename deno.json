@@ -29,7 +29,6 @@
   },
   "unstable": ["worker-options"],
   "allowScripts": {
-    "allow": ["npm:protobufjs@7.5.4", "npm:sharp@0.34.5"],
-    "deny": ["npm:protobufjs@7.2.4"]
+    "allow": ["npm:protobufjs@7.5.4", "npm:sharp@0.34.5"]
   }
 }
