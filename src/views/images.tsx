@@ -4,7 +4,6 @@ import { Layout } from "./layout.tsx";
 interface ImageData {
   id: string;
   file_path: string;
-  thumbnail_path?: string | null;
   width: number;
   height: number;
   orientation: string;
@@ -62,15 +61,13 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                 return (
                 <tr>
                   <td>
-                    {image.thumbnail_path ? (
-                      <img 
-                        src={`/ui/thumbnails/${image.id}`} 
-                        alt={image.file_path.split('/').pop()}
-                        style="width: 80px; height: 53px; object-fit: cover; border-radius: 4px;"
-                      />
-                    ) : (
-                      <div style="width: 80px; height: 53px; background: #f0f0f0; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; color: #999;">No thumb</div>
-                    )}
+                    <img 
+                      src={`/ui/thumbnails/${image.id}`} 
+                      alt={image.file_path.split('/').pop()}
+                      style="width: 80px; height: 53px; object-fit: cover; border-radius: 4px;"
+                      onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                    />
+                    <div style="width: 80px; height: 53px; background: #f0f0f0; border-radius: 4px; display: none; align-items: center; justify-content: center; font-size: 0.75rem; color: #999;">No thumb</div>
                   </td>
                   <td>
                     <code style="font-size: 0.85rem;">

@@ -1,13 +1,8 @@
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
-import {
-  google,
-  storeSession,
-  deleteSession,
-  parseIdToken,
-} from "../services/auth.ts";
+import { google, storeSession, deleteSession, parseIdToken, UserSession } from "../services/auth.ts";
 
-const auth = new Hono();
+const auth = new Hono<{ Variables: { session: UserSession | null } }>();
 
 /**
  * GET /auth/google
@@ -18,12 +13,7 @@ auth.get("/google", async (c) => {
   const codeVerifier = crypto.randomUUID();
 
   // Required scopes for Google Photos Picker API
-  const scopes = [
-    "openid",
-    "profile",
-    "email",
-    "https://www.googleapis.com/auth/photospicker.mediaitems.readonly",
-  ];
+  const scopes = ["openid", "profile", "email", "https://www.googleapis.com/auth/photospicker.mediaitems.readonly"];
 
   const url = await google.createAuthorizationURL(state, codeVerifier, {
     scopes: scopes,
@@ -61,10 +51,7 @@ auth.get("/google/callback", async (c) => {
   // Handle OAuth errors
   if (error) {
     console.error("OAuth error:", error);
-    return c.html(
-      `<html><body><h1>Authentication Error</h1><p>${error}</p><a href="/">Go Home</a></body></html>`,
-      400
-    );
+    return c.html(`<html><body><h1>Authentication Error</h1><p>${error}</p><a href="/">Go Home</a></body></html>`, 400);
   }
 
   const storedState = getCookie(c, "oauth_state");
@@ -72,10 +59,7 @@ auth.get("/google/callback", async (c) => {
 
   // Validate state to prevent CSRF attacks
   if (!code || !state || state !== storedState || !codeVerifier) {
-    return c.html(
-      `<html><body><h1>Invalid Request</h1><p>OAuth state mismatch or missing code</p><a href="/">Go Home</a></body></html>`,
-      400
-    );
+    return c.html(`<html><body><h1>Invalid Request</h1><p>OAuth state mismatch or missing code</p><a href="/">Go Home</a></body></html>`, 400);
   }
 
   try {
@@ -118,12 +102,7 @@ auth.get("/google/callback", async (c) => {
     return c.redirect("/ui/photos-picker");
   } catch (error) {
     console.error("OAuth token exchange error:", error);
-    return c.html(
-      `<html><body><h1>Authentication Failed</h1><p>${
-        error instanceof Error ? error.message : "Unknown error"
-      }</p><a href="/">Go Home</a></body></html>`,
-      500
-    );
+    return c.html(`<html><body><h1>Authentication Failed</h1><p>${error instanceof Error ? error.message : "Unknown error"}</p><a href="/">Go Home</a></body></html>`, 500);
   }
 });
 

@@ -83,7 +83,6 @@ export async function initDatabase() {
       height INTEGER NOT NULL,
       aspect_ratio REAL NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
-      thumbnail_path TEXT,
       processing_status TEXT DEFAULT 'pending' CHECK(processing_status IN ('pending', 'processing', 'complete', 'failed')),
       processing_error TEXT,
       processing_app_id TEXT,
@@ -211,21 +210,7 @@ export async function initDatabase() {
  * Run schema migrations for existing databases
  */
 function runMigrations(db: Database): void {
-  // Migration 1: Add thumbnail_path column to images table if it doesn't exist
-  try {
-    const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
-    const hasThumbnailPath = tableInfo.some(col => col.name === "thumbnail_path");
-    
-    if (!hasThumbnailPath) {
-      console.log("🔄 Running migration: Adding thumbnail_path column to images table");
-      db.exec("ALTER TABLE images ADD COLUMN thumbnail_path TEXT");
-      console.log("✅ Migration completed: thumbnail_path column added");
-    }
-  } catch (error) {
-    console.error("❌ Migration failed:", error);
-  }
-
-  // Migration 2: Add processing_status and processing_error columns
+  // Migration 1: Add processing_status and processing_error columns
   try {
     const tableInfo = db.prepare("PRAGMA table_info(images)").all() as Array<{ name: string }>;
     const hasProcessingStatus = tableInfo.some(col => col.name === "processing_status");
