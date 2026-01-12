@@ -254,4 +254,205 @@ app.patch("/:id/failed", async (c) => {
   return c.json({ success: true });
 });
 
+/**
+ * V2 API: Check if a blob hash already exists (duplicate detection)
+ * GET /api/processing/check-hash/:hash
+ */
+app.get("/check-hash/:hash", (c) => {
+  const { hash } = c.req.param();
+  
+  // Check in new blobs table
+  const db = getDb();
+  const result = db.prepare("SELECT hash FROM blobs WHERE hash = ?").get(hash);
+  const exists = result !== undefined;
+  
+  return c.json({
+    exists,
+    hash,
+  });
+});
+
+/**
+ * V2 API: Finalize image processing
+ * Called by processor after completing all work for a source
+ * 
+ * POST /api/processing/finalize
+ */
+app.post("/finalize", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { sourceId, blobHash, blobData, colorData, variants } = body;
+
+    // Validate required fields
+    if (!sourceId || !blobHash) {
+      return c.json({ error: "Missing required fields: sourceId, blobHash" }, 400);
+    }
+
+    const db = getDb();
+    
+    // Check if source exists
+    const source = db.prepare("SELECT * FROM sources WHERE id = ?").get(sourceId);
+    if (!source) {
+      return c.json({ error: `Source ${sourceId} not found` }, 404);
+    }
+
+    // Create or update blob record
+    const existingBlob = db.prepare("SELECT hash FROM blobs WHERE hash = ?").get(blobHash);
+    
+    if (!existingBlob) {
+      if (!blobData) {
+        return c.json({ error: "blobData required for new blobs" }, 400);
+      }
+
+      db.prepare(`
+        INSERT INTO blobs (
+          hash, storage_path, width, height, aspect_ratio, orientation,
+          file_size, mime_type, color_palette, color_source, blurhash, exif_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        blobHash,
+        blobData.storage_path,
+        blobData.width,
+        blobData.height,
+        blobData.aspect_ratio,
+        blobData.orientation,
+        blobData.file_size || null,
+        blobData.mime_type || null,
+        colorData?.palette || null,
+        colorData?.source || null,
+        blobData.blurhash || null,
+        blobData.exif_data || null
+      );
+      console.log(`[Processing] Created blob ${blobHash}`);
+    } else if (colorData) {
+      // Update color data if provided
+      db.prepare(`
+        UPDATE blobs 
+        SET color_palette = ?, color_source = ?
+        WHERE hash = ?
+      `).run(colorData.palette, colorData.source, blobHash);
+      console.log(`[Processing] Updated colors for blob ${blobHash}`);
+    }
+
+    // Create device variants
+    if (variants && Array.isArray(variants)) {
+      for (const variant of variants) {
+        try {
+          const variantId = crypto.randomUUID();
+          db.prepare(`
+            INSERT INTO device_variants (
+              id, blob_hash, width, height, orientation, storage_path, file_size
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            variantId,
+            blobHash,
+            variant.width,
+            variant.height,
+            variant.orientation,
+            variant.storage_path,
+            variant.file_size || null
+          );
+          console.log(`[Processing] Created variant ${variantId} (${variant.width}x${variant.height})`);
+        } catch (error: any) {
+          // Variant might already exist (UNIQUE constraint)
+          if (!error.message.includes("UNIQUE")) {
+            console.error(`[Processing] Error creating variant:`, error);
+          }
+        }
+      }
+    }
+
+    // Update source status to READY
+    const processedAt = new Date().toISOString();
+    db.prepare(`
+      UPDATE sources 
+      SET status = 'ready', 
+          status_message = 'Processing completed',
+          blob_hash = ?,
+          processed_at = ?
+      WHERE id = ?
+    `).run(blobHash, processedAt, sourceId);
+
+    return c.json({
+      success: true,
+      sourceId,
+      blobHash,
+      variantsCreated: variants?.length || 0,
+    });
+  } catch (error: any) {
+    console.error("[Processing] Error finalizing:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * V2 API: Report processing failure
+ * POST /api/processing/fail
+ */
+app.post("/fail", async (c) => {
+  try {
+    const { sourceId, error } = await c.req.json();
+
+    if (!sourceId) {
+      return c.json({ error: "Missing sourceId" }, 400);
+    }
+
+    const db = getDb();
+    db.prepare(`
+      UPDATE sources 
+      SET status = 'failed', status_message = ?
+      WHERE id = ?
+    `).run(error || "Processing failed", sourceId);
+
+    return c.json({ success: true, sourceId });
+  } catch (error: any) {
+    console.error("[Processing] Error reporting failure:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * V2 API: Get staged sources for processing
+ * GET /api/processing/staged?limit=50
+ */
+app.get("/staged", (c) => {
+  const limit = parseInt(c.req.query("limit") || "50");
+  
+  try {
+    const db = getDb();
+    const sources = db.prepare(`
+      SELECT * FROM sources WHERE status = 'staged' LIMIT ?
+    `).all(limit);
+    
+    return c.json({
+      count: sources.length,
+      sources,
+    });
+  } catch (error: any) {
+    console.error("[Processing] Error fetching staged sources:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * V2 API: Get active device dimensions for variant generation
+ * GET /api/processing/device-dimensions
+ */
+app.get("/device-dimensions", (c) => {
+  try {
+    const db = getDb();
+    
+    const devices = db.prepare(`
+      SELECT DISTINCT width, height, orientation 
+      FROM devices 
+      ORDER BY width DESC, height DESC
+    `).all() as Array<{ width: number; height: number; orientation: string }>;
+
+    return c.json({ devices });
+  } catch (error: any) {
+    console.error("[Processing] Error fetching device dimensions:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
 export default app;
