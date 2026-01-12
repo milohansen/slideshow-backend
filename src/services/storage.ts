@@ -4,6 +4,7 @@
  */
 
 import { Storage, UploadOptions } from "@google-cloud/storage";
+import { Readable } from 'node:stream';
 
 let storage: Storage | null = null;
 let bucketName: string | null = null;
@@ -136,6 +137,45 @@ export async function readFile(gcsPath: string): Promise<Uint8Array> {
     console.error(`Failed to read ${gcsPath} from GCS:`, error);
     throw error;
   }
+}
+
+/**
+ * Create a read stream for a file in GCS (for streaming responses)
+ * Returns a Web ReadableStream compatible with Deno/Web APIs
+ */
+export function createReadStream(gcsPath: string): ReadableStream<Uint8Array> {
+  if (!isGCSEnabled() || !storage || !bucketName) {
+    throw new Error("Google Cloud Storage not initialized");
+  }
+
+  const bucket = storage.bucket(bucketName);
+  const file = bucket.file(gcsPath);
+  
+  // Create Node.js ReadableStream from GCS
+  const nodeStream = file.createReadStream();
+
+  return Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+  
+  // Convert Node.js stream to Web ReadableStream
+  // return new ReadableStream({
+  //   start(controller) {
+  //     nodeStream.on("data", (chunk: Buffer) => {
+  //       controller.enqueue(new Uint8Array(chunk));
+  //     });
+      
+  //     nodeStream.on("end", () => {
+  //       controller.close();
+  //     });
+      
+  //     nodeStream.on("error", (error) => {
+  //       console.error(`Stream error for ${gcsPath}:`, error);
+  //       controller.error(error);
+  //     });
+  //   },
+  //   cancel() {
+  //     nodeStream.destroy();
+  //   },
+  // });
 }
 
 /**

@@ -5,8 +5,8 @@
 
 import { parseArgs } from "@std/cli/parse-args";
 import { initDatabase } from "./db/schema.ts";
-import { ingestImagesFromDirectory, getImageStats } from "./services/image-ingestion.ts";
-import { processAllImages, loadConfig } from "./services/image-processing.ts";
+import { getImageStats, ingestImagesFromDirectory } from "./services/image-ingestion.ts";
+import { processAllImages } from "./services/image-processing.ts";
 
 const COMMANDS = {
   ingest: "Ingest images from a directory",
@@ -81,8 +81,7 @@ async function runProcess(args: string[]) {
     },
   });
 
-  const config = await loadConfig();
-  const outputDir = config.processedImageDirectory || "data/processed";
+  const outputDir = "data/processed";
 
   console.log(`Processing images for all device sizes`);
   console.log(`Output directory: ${outputDir}`);
@@ -105,7 +104,7 @@ async function runProcess(args: string[]) {
 
 function runStats() {
   const stats = getImageStats();
-  
+
   console.log("\n" + "=".repeat(50));
   console.log("Image Statistics");
   console.log("=".repeat(50));

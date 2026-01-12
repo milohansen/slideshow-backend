@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getDb } from "../db/schema.ts";
 import { generateSlideshowQueue, getNextImage, loadQueueState } from "../services/slideshow-queue.ts";
-import { isGCSEnabled, readFile, parseGCSUri } from "../services/storage.ts";
+import { isGCSEnabled, readFile, parseGCSUri, createReadStream } from "../services/storage.ts";
 
 const devices = new Hono();
 
@@ -186,11 +186,9 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
       return c.json({ error: "Image not found" }, 404);
     }
     
-    let imageData: Uint8Array;
-    
     // Check if file is in GCS or local
     if (filePath.startsWith("gs://")) {
-      // Read from Google Cloud Storage
+      // Stream from Google Cloud Storage
       if (!isGCSEnabled()) {
         return c.json({ error: "GCS not configured" }, 500);
       }
@@ -200,18 +198,25 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
         return c.json({ error: "Invalid GCS path" }, 500);
       }
       
-      imageData = await readFile(gcsInfo.path);
+      const stream = createReadStream(gcsInfo.path);
+      
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000",
+        },
+      });
     } else {
-      // Read from local filesystem
-      imageData = await Deno.readFile(filePath);
+      // Stream from local filesystem
+      const file = await Deno.open(filePath, { read: true });
+      
+      return new Response(file.readable, {
+        headers: {
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "public, max-age=31536000",
+        },
+      });
     }
-    
-    return new Response(imageData, {
-      headers: {
-        "Content-Type": "image/jpeg",
-        "Cache-Control": "public, max-age=31536000",
-      },
-    });
   } catch (error) {
     console.error("Error serving image:", error);
     return c.json({ error: "Failed to serve image" }, 500);

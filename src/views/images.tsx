@@ -97,7 +97,7 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                         >
                           ✗ Failed
                         </span>
-                        <form method="POST" action={`/ui/images/${image.id}/retry`} style="margin: 0;">
+                        <form method="post" action={`/ui/images/${image.id}/retry`} style="margin: 0;">
                           <button 
                             type="submit" 
                             class="btn-small"

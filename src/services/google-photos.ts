@@ -226,12 +226,12 @@ export async function getAllMediaItems(
 export function deletePickerSession(pickerSessionId: string): boolean {
   const db = getDb();
   
-  const result = db.prepare(`
+  const changes = db.prepare(`
     DELETE FROM picker_sessions 
     WHERE picker_session_id = ?
   `).run(pickerSessionId);
   
-  if (result.changes > 0) {
+  if (changes > 0) {
     console.log(`🗑️  Deleted picker session: ${pickerSessionId}`);
     return true;
   }
@@ -246,16 +246,16 @@ export function cleanupExpiredSessions(): number {
   const db = getDb();
   const now = new Date().toISOString();
   
-  const result = db.prepare(`
+  const changes = db.prepare(`
     DELETE FROM picker_sessions 
     WHERE expire_time IS NOT NULL AND expire_time < ?
   `).run(now);
   
-  if (result.changes > 0) {
-    console.log(`🧹 Cleaned up ${result.changes} expired picker sessions`);
+  if (changes > 0) {
+    console.log(`🧹 Cleaned up ${changes} expired picker sessions`);
   }
   
-  return result.changes;
+  return changes;
 }
 
 /**

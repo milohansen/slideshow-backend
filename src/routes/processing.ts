@@ -2,17 +2,16 @@
  * Processing API routes for Cloud Run Job coordination
  */
 
-import { Hono } from "hono";
 import type { Context, Next } from "hono";
+import { Hono } from "hono";
 import { getDb } from "../db/schema.ts";
-import { parseGCSUri } from "../services/storage.ts";
 
 const app = new Hono();
 
 /**
  * Middleware to validate processor service account
  */
-async function validateProcessorAuth(c: Context, next: Next): Promise<void> {
+async function validateProcessorAuth(c: Context, next: Next): Promise<Response | void> {
   const authHeader = c.req.header("Authorization");
   const expectedToken = Deno.env.get("PROCESSOR_AUTH_TOKEN");
 

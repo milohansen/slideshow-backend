@@ -108,10 +108,14 @@ export async function stageBatch(inputs: StagedImageInput[]): Promise<IngestionR
       results.push(result);
     } catch (error) {
       console.error(`Failed to stage ${input.localPath}:`, error);
+      let message = "Unknown error";
+      if (error instanceof Error) {
+        message = error.message;
+      }
       results.push({
         sourceId: "",
         status: "staged",
-        message: `Error: ${error.message}`,
+        message: `Error: ${message}`,
       });
     }
   }

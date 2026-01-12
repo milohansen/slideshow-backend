@@ -125,9 +125,9 @@ class BatchJobQueue {
       // Execute the job with batch information in environment variables
       const [operation] = await client.runJob({
         name: jobPath,
-        overrides: {
-          containerOverrides: [{
-            env: [
+      }, {
+        otherArgs: {
+          env: [
               {
                 name: "BATCH_ID",
                 value: batchId,
@@ -145,9 +145,7 @@ class BatchJobQueue {
                 value: config.authToken,
               },
             ],
-          }],
-          taskCount: Math.min(10, Math.ceil(sourceIds.length / 5)), // 1 task per 5 sources, max 10 tasks
-        },
+        }
       });
 
       console.log(`[BatchQueue] Job execution started: ${operation.name}`);
