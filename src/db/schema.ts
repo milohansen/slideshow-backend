@@ -64,11 +64,12 @@ export async function initDatabase() {
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape')),
+      layout_type TEXT NOT NULL DEFAULT 'single' CHECK(layout_type IN ('single', 'pair-vertical', 'pair-horizontal')),
       storage_path TEXT NOT NULL,
       file_size INTEGER,
       processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (blob_hash) REFERENCES blobs(hash) ON DELETE CASCADE,
-      UNIQUE(blob_hash, width, height)
+      UNIQUE(blob_hash, width, height, layout_type)
     )
   `);
 
@@ -119,6 +120,7 @@ export async function initDatabase() {
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape')),
+      layouts TEXT,
       capabilities TEXT,
       version TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -335,6 +337,37 @@ function runMigrations(db: Database): void {
   } catch (error) {
     console.error("❌ Migration failed:", error);
   }
+
+  // Migration 9: Add layouts column to devices table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(devices)").all() as Array<{ name: string }>;
+    const hasLayouts = tableInfo.some(col => col.name === "layouts");
+    
+    if (!hasLayouts) {
+      console.log("🔄 Running migration: Adding layouts column to devices table");
+      db.exec("ALTER TABLE devices ADD COLUMN layouts TEXT");
+      console.log("✅ Migration completed: layouts column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 10: Add layout_type column to device_variants table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(device_variants)").all() as Array<{ name: string }>;
+    const hasLayoutType = tableInfo.some(col => col.name === "layout_type");
+    
+    if (!hasLayoutType) {
+      console.log("🔄 Running migration: Adding layout_type column to device_variants table");
+      db.exec("ALTER TABLE device_variants ADD COLUMN layout_type TEXT NOT NULL DEFAULT 'single' CHECK(layout_type IN ('single', 'pair-vertical', 'pair-horizontal'))");
+      
+      // Note: Existing variants will have layout_type='single' by default
+      // A reprocessing job should be run to generate pair-* variants
+      console.log("✅ Migration completed: layout_type column added (existing variants default to 'single')");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
 }
 
 /**
@@ -353,6 +386,23 @@ function initializeDefaultDevices(db: Database): void {
         width: 1024,
         height: 600,
         orientation: "landscape",
+        layouts: JSON.stringify([
+          {
+            type: "single",
+            width: 1024,
+            height: 600,
+            preferredAspectRatios: ["landscape", "square"], // Images wider than tall
+            minAspectRatio: 1.0, // 1:1 and above
+          },
+          {
+            type: "pair-vertical",
+            width: 508, // (1024 - 4 * 2) / 2
+            height: 600,
+            divider: 4,
+            preferredAspectRatios: ["portrait"], // Images taller than wide
+            maxAspectRatio: 1.0, // Less than 1:1
+          },
+        ]),
       },
       {
         id: "bedroom-clock",
@@ -360,16 +410,25 @@ function initializeDefaultDevices(db: Database): void {
         width: 300,
         height: 400,
         orientation: "portrait",
+        layouts: JSON.stringify([
+          {
+            type: "single",
+            width: 300,
+            height: 400,
+            preferredAspectRatios: ["portrait", "square"],
+            maxAspectRatio: 1.0,
+          },
+        ]),
       },
     ];
     
     const stmt = db.prepare(`
-      INSERT INTO devices (id, name, width, height, orientation, last_seen)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO devices (id, name, width, height, orientation, layouts, last_seen)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
     
     for (const device of defaultDevices) {
-      stmt.run(device.id, device.name, device.width, device.height, device.orientation);
+      stmt.run(device.id, device.name, device.width, device.height, device.orientation, device.layouts);
       console.log(`  ✓ ${device.name} (${device.width}x${device.height} ${device.orientation})`);
     }
     

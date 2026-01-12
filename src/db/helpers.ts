@@ -4,7 +4,7 @@ import { getDb } from "./schema.ts";
  * Database helper functions for the new schema (blobs, sources, device_variants)
  */
 
-export interface Blob {
+export type Blob = {
   hash: string;
   storage_path: string;
   width: number;
@@ -18,9 +18,9 @@ export interface Blob {
   blurhash?: string;
   exif_data?: string;
   created_at: string;
-}
+};
 
-export interface Source {
+export type Source = {
   id: string;
   user_id?: string;
   blob_hash?: string;
@@ -31,9 +31,9 @@ export interface Source {
   staging_path?: string;
   ingested_at: string;
   processed_at?: string;
-}
+};
 
-export interface DeviceVariant {
+export type DeviceVariant = {
   id: string;
   blob_hash: string;
   width: number;
@@ -42,7 +42,7 @@ export interface DeviceVariant {
   storage_path: string;
   file_size?: number;
   processed_at: string;
-}
+};
 
 /**
  * Check if a blob exists by hash

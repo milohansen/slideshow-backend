@@ -3,6 +3,7 @@
  */
 
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
 import { getDb } from "../db/schema.ts";
 import { parseGCSUri } from "../services/storage.ts";
 
@@ -11,7 +12,7 @@ const app = new Hono();
 /**
  * Middleware to validate processor service account
  */
-async function validateProcessorAuth(c: any, next: any) {
+async function validateProcessorAuth(c: Context, next: Next): Promise<void> {
   const authHeader = c.req.header("Authorization");
   const expectedToken = Deno.env.get("PROCESSOR_AUTH_TOKEN");
 
@@ -341,21 +342,22 @@ app.post("/finalize", async (c) => {
           const variantId = crypto.randomUUID();
           db.prepare(`
             INSERT INTO device_variants (
-              id, blob_hash, width, height, orientation, storage_path, file_size
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+              id, blob_hash, width, height, orientation, layout_type, storage_path, file_size
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             variantId,
             blobHash,
             variant.width,
             variant.height,
             variant.orientation,
+            variant.layout_type || "single",
             variant.storage_path,
             variant.file_size || null
           );
-          console.log(`[Processing] Created variant ${variantId} (${variant.width}x${variant.height})`);
-        } catch (error: any) {
+          console.log(`[Processing] Created variant ${variantId} (${variant.width}x${variant.height}, ${variant.layout_type || "single"})`);
+        } catch (error: unknown) {
           // Variant might already exist (UNIQUE constraint)
-          if (!error.message.includes("UNIQUE")) {
+          if (error instanceof Error && !error.message.includes("UNIQUE")) {
             console.error(`[Processing] Error creating variant:`, error);
           }
         }
@@ -379,9 +381,10 @@ app.post("/finalize", async (c) => {
       blobHash,
       variantsCreated: variants?.length || 0,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Processing] Error finalizing:", error);
-    return c.json({ error: error.message }, 500);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return c.json({ error: errorMessage }, 500);
   }
 });
 
@@ -405,9 +408,10 @@ app.post("/fail", async (c) => {
     `).run(error || "Processing failed", sourceId);
 
     return c.json({ success: true, sourceId });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Processing] Error reporting failure:", error);
-    return c.json({ error: error.message }, 500);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return c.json({ error: errorMessage }, 500);
   }
 });
 
@@ -428,9 +432,10 @@ app.get("/staged", (c) => {
       count: sources.length,
       sources,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[Processing] Error fetching staged sources:", error);
-    return c.json({ error: error.message }, 500);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return c.json({ error: errorMessage }, 500);
   }
 });
 
@@ -443,15 +448,24 @@ app.get("/device-dimensions", (c) => {
     const db = getDb();
     
     const devices = db.prepare(`
-      SELECT DISTINCT width, height, orientation 
+      SELECT width, height, orientation, layouts 
       FROM devices 
       ORDER BY width DESC, height DESC
-    `).all() as Array<{ width: number; height: number; orientation: string }>;
+    `).all() as Array<{ width: number; height: number; orientation: string; layouts: string | null }>;
 
-    return c.json({ devices });
-  } catch (error: any) {
+    // Parse layouts JSON for each device
+    const devicesWithLayouts = devices.map(device => ({
+      width: device.width,
+      height: device.height,
+      orientation: device.orientation,
+      layouts: device.layouts ? JSON.parse(device.layouts) : undefined,
+    }));
+
+    return c.json({ devices: devicesWithLayouts });
+  } catch (error: unknown) {
     console.error("[Processing] Error fetching device dimensions:", error);
-    return c.json({ error: error.message }, 500);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    return c.json({ error: errorMessage }, 500);
   }
 });
 

@@ -219,3 +219,135 @@ export const COMMON_ASPECT_RATIOS = {
   LANDSCAPE_3_2: 3 / 2,
   LANDSCAPE_4_3: 4 / 3,
 };
+
+/**
+ * Layout slot definition from device configuration
+ */
+export type LayoutSlot = {
+  type: "single" | "pair-vertical" | "pair-horizontal";
+  width: number;
+  height: number;
+  divider?: number;
+  preferredAspectRatios?: string[];
+  minAspectRatio?: number;
+  maxAspectRatio?: number;
+};
+
+/**
+ * Layout evaluation result with crop calculation
+ */
+export type LayoutEvaluation = {
+  layoutType: "single" | "pair-vertical" | "pair-horizontal";
+  width: number;
+  height: number;
+  cropPercentage: number; // 0-100, lower is better
+  isPreferred: boolean; // Matches preferred aspect ratio
+};
+
+/**
+ * Calculate crop percentage when fitting an image to target dimensions
+ * Returns percentage of image area that will be cropped (0-100)
+ */
+export function calculateCropPercentage(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number
+): number {
+  const sourceRatio = sourceWidth / sourceHeight;
+  const targetRatio = targetWidth / targetHeight;
+  
+  if (Math.abs(sourceRatio - targetRatio) < 0.001) {
+    return 0; // Perfect match, no crop
+  }
+  
+  if (sourceRatio > targetRatio) {
+    // Source is wider - will crop width
+    // Final height = targetHeight, final width = targetWidth
+    // Used width = targetHeight * sourceRatio (before crop)
+    const usedWidth = targetHeight * sourceRatio;
+    const croppedWidth = usedWidth - targetWidth;
+    const cropPercentage = (croppedWidth / usedWidth) * 100;
+    return cropPercentage;
+  } else {
+    // Source is taller - will crop height
+    // Final width = targetWidth, final height = targetHeight
+    // Used height = targetWidth / sourceRatio (before crop)
+    const usedHeight = targetWidth / sourceRatio;
+    const croppedHeight = usedHeight - targetHeight;
+    const cropPercentage = (croppedHeight / usedHeight) * 100;
+    return cropPercentage;
+  }
+}
+
+/**
+ * Evaluate which layouts an image is eligible for and calculate crop percentages
+ * Returns layouts sorted by crop percentage (least crop first)
+ */
+export function evaluateImageForLayouts(
+  imageWidth: number,
+  imageHeight: number,
+  layouts: LayoutSlot[]
+): LayoutEvaluation[] {
+  const imageAspectRatio = calculateAspectRatio(imageWidth, imageHeight);
+  const evaluations: LayoutEvaluation[] = [];
+  
+  for (const layout of layouts) {
+    const cropPercentage = calculateCropPercentage(
+      imageWidth,
+      imageHeight,
+      layout.width,
+      layout.height
+    );
+    
+    // Check if image matches preferred aspect ratios
+    let isPreferred = false;
+    if (layout.preferredAspectRatios) {
+      isPreferred = layout.preferredAspectRatios.includes(imageAspectRatio.orientation);
+    }
+    
+    // Check aspect ratio constraints
+    let meetsConstraints = true;
+    if (layout.minAspectRatio !== undefined && imageAspectRatio.ratio < layout.minAspectRatio) {
+      meetsConstraints = false;
+    }
+    if (layout.maxAspectRatio !== undefined && imageAspectRatio.ratio > layout.maxAspectRatio) {
+      meetsConstraints = false;
+    }
+    
+    // Only include layouts that meet constraints
+    if (meetsConstraints) {
+      evaluations.push({
+        layoutType: layout.type,
+        width: layout.width,
+        height: layout.height,
+        cropPercentage,
+        isPreferred,
+      });
+    }
+  }
+  
+  // Sort by crop percentage (least crop first)
+  evaluations.sort((a, b) => a.cropPercentage - b.cropPercentage);
+  
+  return evaluations;
+}
+
+/**
+ * Select the best layout for an image based on crop minimization
+ * Returns the layout with the least crop percentage
+ */
+export function selectBestLayout(
+  imageWidth: number,
+  imageHeight: number,
+  layouts: LayoutSlot[]
+): LayoutEvaluation | null {
+  const evaluations = evaluateImageForLayouts(imageWidth, imageHeight, layouts);
+  
+  if (evaluations.length === 0) {
+    return null;
+  }
+  
+  // Return the layout with minimum crop (first in sorted array)
+  return evaluations[0];
+}
