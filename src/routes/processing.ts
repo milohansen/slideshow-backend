@@ -64,22 +64,40 @@ app.get("/pending", (c) => {
 });
 
 /**
- * POST /api/processing-attempts/:imageId/start
+ * POST /api/processing/:imageId/start
  * Registers a processing attempt and returns device list
+ * Creates image record if it doesn't exist (permissive mode)
  */
-app.post("/:imageId/start", (c) => {
+app.post("/:imageId/start", async (c) => {
   const imageId = c.req.param("imageId");
+  const body = await c.req.json();
+  const imageInfo = body.imageInfo as { width: number; height: number; orientation: string; filePath: string } | undefined;
+  
   const db = getDb();
 
-  // Verify image exists and is pending
-  const image = db.prepare(`
+  // Check if image exists
+  let image = db.prepare(`
     SELECT id, processing_status
     FROM images
     WHERE id = ?
   `).get(imageId) as { id: string; processing_status: string } | undefined;
 
-  if (!image) {
-    return c.json({ error: "Image not found" }, 404);
+  // If image doesn't exist and imageInfo provided, create it
+  if (!image && imageInfo) {
+    console.log(`📝 Creating image record for ${imageId}`);
+    
+    // Generate a simple hash based on imageId for now
+    const fileHash = imageId;
+    const aspectRatio = imageInfo.width / imageInfo.height;
+    
+    db.prepare(`
+      INSERT INTO images (id, file_path, file_hash, width, height, aspect_ratio, orientation, processing_status, last_modified)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'processing', CURRENT_TIMESTAMP)
+    `).run(imageId, imageInfo.filePath, fileHash, imageInfo.width, imageInfo.height, aspectRatio, imageInfo.orientation);
+    
+    image = { id: imageId, processing_status: 'processing' };
+  } else if (!image) {
+    return c.json({ error: "Image not found and no imageInfo provided" }, 404);
   }
 
   // Get all registered devices
