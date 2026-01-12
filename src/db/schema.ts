@@ -19,7 +19,60 @@ export async function initDatabase() {
   db.exec("PRAGMA wal_autocheckpoint=1000");
   db.exec("PRAGMA busy_timeout=5000");
 
-  // Images table - stores original image metadata
+  // Blobs table - stores unique image content by hash (deduplication)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blobs (
+      hash TEXT PRIMARY KEY,
+      storage_path TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      aspect_ratio REAL NOT NULL,
+      orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape', 'square')),
+      file_size INTEGER,
+      mime_type TEXT,
+      color_palette TEXT,
+      color_source TEXT,
+      blurhash TEXT,
+      exif_data TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Sources table - user-facing image records with ingestion status
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sources (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      blob_hash TEXT,
+      origin TEXT NOT NULL CHECK(origin IN ('google_photos', 'upload', 'url')),
+      external_id TEXT,
+      status TEXT DEFAULT 'staged' CHECK(status IN ('staged', 'processing', 'ready', 'failed')),
+      status_message TEXT,
+      staging_path TEXT,
+      ingested_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      processed_at DATETIME,
+      FOREIGN KEY (blob_hash) REFERENCES blobs(hash) ON DELETE SET NULL,
+      UNIQUE(user_id, external_id, origin)
+    )
+  `);
+
+  // Device variants table - processed image outputs keyed by blob and size
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS device_variants (
+      id TEXT PRIMARY KEY,
+      blob_hash TEXT NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape')),
+      storage_path TEXT NOT NULL,
+      file_size INTEGER,
+      processed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (blob_hash) REFERENCES blobs(hash) ON DELETE CASCADE,
+      UNIQUE(blob_hash, width, height)
+    )
+  `);
+
+  // Legacy: Images table - stores original image metadata (DEPRECATED, keep for migration)
   db.exec(`
     CREATE TABLE IF NOT EXISTS images (
       id TEXT PRIMARY KEY,
@@ -38,7 +91,7 @@ export async function initDatabase() {
     )
   `);
 
-  // Processed images table - stores resized variants with color data
+  // Legacy: Processed images table - stores resized variants with color data (DEPRECATED, keep for migration)
   db.exec(`
     CREATE TABLE IF NOT EXISTS processed_images (
       id TEXT PRIMARY KEY,
@@ -66,6 +119,8 @@ export async function initDatabase() {
       width INTEGER NOT NULL,
       height INTEGER NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape')),
+      capabilities TEXT,
+      version TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       last_seen DATETIME
     )
@@ -112,6 +167,15 @@ export async function initDatabase() {
   `);
 
   // Create indices for better query performance
+  // New schema indices
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_status ON sources(status)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_blob_hash ON sources(blob_hash)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sources_user_id ON sources(user_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_device_variants_blob_hash ON device_variants(blob_hash)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_device_variants_dimensions ON device_variants(width, height)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_blobs_orientation ON blobs(orientation)`);
+  
+  // Legacy schema indices
   db.exec(`CREATE INDEX IF NOT EXISTS idx_images_orientation ON images(orientation)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_image_id ON processed_images(image_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_processed_images_device_size ON processed_images(device_size)`);
@@ -246,6 +310,27 @@ function runMigrations(db: Database): void {
       db.exec("UPDATE processed_images SET color_source = color_primary WHERE color_source IS NULL");
       
       console.log("✅ Migration completed: color_source column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
+
+  // Migration 8: Add capabilities and version columns to devices table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(devices)").all() as Array<{ name: string }>;
+    const hasCapabilities = tableInfo.some(col => col.name === "capabilities");
+    const hasVersion = tableInfo.some(col => col.name === "version");
+    
+    if (!hasCapabilities) {
+      console.log("🔄 Running migration: Adding capabilities column to devices table");
+      db.exec("ALTER TABLE devices ADD COLUMN capabilities TEXT");
+      console.log("✅ Migration completed: capabilities column added");
+    }
+    
+    if (!hasVersion) {
+      console.log("🔄 Running migration: Adding version column to devices table");
+      db.exec("ALTER TABLE devices ADD COLUMN version TEXT");
+      console.log("✅ Migration completed: version column added");
     }
   } catch (error) {
     console.error("❌ Migration failed:", error);
