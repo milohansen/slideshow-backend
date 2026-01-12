@@ -6,11 +6,13 @@ import { extractImageMetadata, getImageStats, ingestImagesFromDirectory } from "
 import { processAllImages } from "../services/image-processing.ts";
 import { isGCSEnabled, uploadFile } from "../services/storage.ts";
 import { getWorkerQueue, queueImageProcessing } from "../services/worker-queue.ts";
+import { requireAuth } from "../middleware/auth.ts";
 import photosRoutes from "./photos.ts";
 
 const admin = new Hono();
 
-// Mount photos routes under /photos
+// Mount photos routes under /photos (require authentication for Google Photos)
+admin.use("/photos/*", requireAuth);
 admin.route("/photos", photosRoutes);
 
 // Get image statistics

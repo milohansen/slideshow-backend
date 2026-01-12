@@ -177,8 +177,7 @@ app.route("/api/processing", processingRoutes);
 app.route("/api/processed-images", processingRoutes);
 app.route("/api/images", processingRoutes);
 
-// Protected admin routes (require authentication)
-app.use("/api/admin/*", requireAuth);
+// Admin routes (auth only required for Google Photos)
 app.route("/api/admin", adminRoutes);
 
 // Redirect root to UI
