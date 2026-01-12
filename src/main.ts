@@ -8,10 +8,8 @@ import { optionalAuth } from "./middleware/auth.ts";
 import adminRoutes from "./routes/admin.ts";
 import authRoutes from "./routes/auth.ts";
 import deviceRoutes from "./routes/devices.ts";
-import processingRoutes from "./routes/processing.ts";
 import uiRoutes from "./routes/ui.tsx";
 import { initJobQueue, shutdownJobQueue } from "./services/job-queue.ts";
-import { initMetadataSync, stopMetadataSync } from "./services/metadata-sync.ts";
 import { initStorage } from "./services/storage.ts";
 
 const app = new Hono();
@@ -29,9 +27,6 @@ initStorage();
 
 // Initialize Firestore
 await initFirestore();
-
-// Initialize metadata sync service (if GCS is enabled)
-initMetadataSync();
 
 // Initialize job queue service
 initJobQueue();
@@ -56,11 +51,6 @@ app.route("/ui", uiRoutes);
 
 // Device API routes (public for now - devices authenticate via device ID)
 app.route("/api/devices", deviceRoutes);
-
-// Processing API routes (authenticated by processor service account)
-app.route("/api/processing", processingRoutes);
-app.route("/api/processed-images", processingRoutes);
-app.route("/api/images", processingRoutes);
 
 // Admin routes (auth only required for Google Photos)
 app.route("/api/admin", adminRoutes);
@@ -91,9 +81,6 @@ const shutdown = async (signal: string) => {
   try {
     // Flush pending job queue
     await shutdownJobQueue();
-
-    // Stop metadata sync
-    stopMetadataSync();
 
     await server.shutdown();
     console.log("Server closed successfully");

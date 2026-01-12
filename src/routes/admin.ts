@@ -1,13 +1,16 @@
-import { crypto } from "@std/crypto";
-import { join } from "@std/path";
 import { Hono } from "hono";
-import { getDb } from "../db/schema.ts";
-import { extractImageMetadata, getImageStats, ingestImagesFromDirectory } from "../services/image-ingestion.ts";
-import { processAllImages } from "../services/image-processing.ts";
-import { isGCSEnabled, uploadFile } from "../services/storage.ts";
-import { getWorkerQueue, queueImageProcessing } from "../services/worker-queue.ts";
 import { requireAuth } from "../middleware/auth.ts";
 import photosRoutes from "./photos.ts";
+import { getFirestore, Collections } from "../db/firestore.ts";
+import type { Firestore } from "@google-cloud/firestore";
+import {
+  countSourcesByStatus,
+  deleteBlob,
+  deleteSource,
+  getSourcesForBlob,
+  getSource,
+} from "../db/helpers-firestore.ts";
+import { deleteFile } from "../services/storage.ts";
 
 const admin = new Hono();
 
@@ -15,286 +18,229 @@ const admin = new Hono();
 admin.use("/photos/*", requireAuth);
 admin.route("/photos", photosRoutes);
 
-// Get image statistics
-admin.get("/stats", (c) => {
-  const stats = getImageStats();
-  const queueStats = getWorkerQueue().getStatus();
+// Admin stats endpoint
+admin.get("/stats", async (c) => {
+  const db = getFirestore();
+  
+  // Get collection counts
+  const [blobsCount, sourcesCount, devicesCount, variantsCount] = await Promise.all([
+    db.collection(Collections.BLOBS).count().get(),
+    db.collection(Collections.SOURCES).count().get(),
+    db.collection(Collections.DEVICES).count().get(),
+    db.collection(Collections.DEVICE_VARIANTS).count().get(),
+  ]);
+  
+  // Get processing status breakdown
+  const statusCounts = await countSourcesByStatus();
+  
   return c.json({
-    ...stats,
-    processing: queueStats,
+    blobs: blobsCount.data().count,
+    sources: sourcesCount.data().count,
+    devices: devicesCount.data().count,
+    variants: variantsCount.data().count,
+    processing: statusCounts,
   });
 });
 
-// Trigger image ingestion
-admin.post("/ingest", async (c) => {
-  const body = await c.req.json();
-  const { directory, recursive = true } = body;
-
-  if (!directory) {
-    return c.json({ error: "Directory path required" }, 400);
-  }
-
-  try {
-    await Deno.stat(directory);
-  } catch {
-    return c.json({ error: `Directory not found: ${directory}` }, 404);
-  }
-
-  // Run ingestion asynchronously
-  const result = await ingestImagesFromDirectory(directory, {
-    recursive,
-    verbose: false,
-  });
-
-  return c.json({
-    success: true,
-    result,
-  });
-});
-
-// Trigger image processing
-admin.post("/process", async (c) => {
-  const outputDir = "data/processed";
-
-  const result = await processAllImages(outputDir, {
-    verbose: false,
-  });
-
-  return c.json({
-    success: true,
-    result,
-  });
-});
-
-// Upload images
+// Image upload endpoint
 admin.post("/upload", async (c) => {
-  try {
-    const body = await c.req.parseBody();
-    const files = [];
-
-    // Handle multiple files
-    for (const [key, value] of Object.entries(body)) {
-      if (key.startsWith("files") && value instanceof File) {
-        files.push(value);
-      }
+  const body = await c.req.parseBody();
+  const files: File[] = [];
+  
+  // Extract all file inputs
+  for (const [key, value] of Object.entries(body)) {
+    if (key.startsWith("files") && value instanceof File) {
+      files.push(value);
     }
-
-    if (files.length === 0) {
-      return c.json({ error: "No files provided" }, 400);
-    }
-
-    const results = [];
-    const uploadDir = "data/uploads";
-
-    // Create upload directory if it doesn't exist
-    try {
-      await Deno.mkdir(uploadDir, { recursive: true });
-    } catch {
-      // Directory already exists
-    }
-
-    for (const file of files) {
+  }
+  
+  if (files.length === 0) {
+    return c.json({ error: "No files provided" }, 400);
+  }
+  
+  console.log(`[Admin] Processing ${files.length} uploaded files`);
+  
+  // Write files to temporary directory and stage them
+  const { stageImageForProcessing } = await import("../services/image-ingestion-v2.ts");
+  const { queueSourceProcessing } = await import("../services/job-queue-v2.ts");
+  
+  const results = await Promise.all(
+    files.map(async (file) => {
       try {
-        // Validate file type
-        const ext = `.${file.name.split(".").pop()?.toLowerCase()}`;
-        const supportedExtensions = [".jpg", ".jpeg", ".png", ".webp", ".gif"];
-
-        if (!supportedExtensions.includes(ext)) {
-          results.push({
-            filename: file.name,
-            success: false,
-            error: `Unsupported file type: ${ext}`,
-          });
-          continue;
-        }
-
-        // Save file to temporary location
-        const tempPath = join(uploadDir, `${crypto.randomUUID()}${ext}`);
+        // Write to temporary file
+        const tempDir = await Deno.makeTempDir();
+        const ext = file.name.substring(file.name.lastIndexOf("."));
+        const tempPath = `${tempDir}/${crypto.randomUUID()}${ext}`;
+        
         const arrayBuffer = await file.arrayBuffer();
         await Deno.writeFile(tempPath, new Uint8Array(arrayBuffer));
-
-        // Extract metadata
-        const metadata = await extractImageMetadata(tempPath);
-        const imageId = crypto.randomUUID();
-
-        // Upload to GCS if enabled, otherwise keep local
-        let storagePath = tempPath;
-        if (isGCSEnabled()) {
-          try {
-            const gcsPath = `images/originals/${imageId}${ext}`;
-            const gcsUri = await uploadFile(tempPath, gcsPath, file.type || "image/jpeg");
-            storagePath = gcsUri;
-            // Clean up local temp file after successful GCS upload
-            await Deno.remove(tempPath).catch(() => {});
-          } catch (error) {
-            console.error(`Failed to upload to GCS:`, error);
-          }
+        
+        // Stage for processing
+        const result = await stageImageForProcessing({
+          localPath: tempPath,
+          origin: "upload",
+          userId: undefined, // Admin upload, no user association
+        });
+        
+        // Queue for processing
+        if (result.sourceId) {
+          await queueSourceProcessing(result.sourceId);
         }
-
-        // Store in database
-        const db = getDb();
-        db.prepare(
-          `
-          INSERT INTO images (
-            id, file_path, file_hash, width, height, orientation, last_modified
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        `
-        ).run(imageId, storagePath, metadata.fileHash, metadata.width, metadata.height, metadata.orientation, metadata.lastModified.toISOString());
-
-        results.push({
+        
+        return {
           filename: file.name,
           success: true,
-          id: imageId,
-          dimensions: `${metadata.width}x${metadata.height}`,
-          orientation: metadata.orientation,
-        });
-
-        // Queue image processing for all device sizes
-        queueImageProcessing(imageId);
+          sourceId: result.sourceId,
+          status: result.status,
+        };
       } catch (error) {
-        results.push({
+        console.error(`[Admin] Failed to process file ${file.name}:`, error);
+        return {
           filename: file.name,
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",
-        });
+        };
       }
-    }
-
-    const successCount = results.filter((r) => r.success).length;
-    const failCount = results.filter((r) => !r.success).length;
-
-    return c.json({
-      success: successCount > 0,
-      uploaded: successCount,
-      failed: failCount,
-      results,
-    });
-  } catch (error) {
-    return c.json(
-      {
-        error: error instanceof Error ? error.message : "Upload failed",
-      },
-      500
-    );
-  }
-});
-
-/**
- * DELETE /api/admin/images/:id
- * Delete a single image and its processed versions
- */
-admin.delete("/images/:id", async (c) => {
-  const imageId = c.req.param("id");
+    })
+  );
   
-  try {
-    const db = getDb();
-    
-    // Get image info before deleting
-    const image = db.prepare("SELECT id, file_path FROM images WHERE id = ?").get(imageId) as { id: string; file_path: string } | undefined;
-    
-    if (!image) {
-      return c.json({ error: "Image not found" }, 404);
-    }
-    
-    // Delete from database first
-    const deletedImages = db.prepare("DELETE FROM images WHERE id = ?").run(imageId);
-    const deletedProcessed = db.prepare("DELETE FROM processed_images WHERE image_id = ?").run(imageId);
-    
-    // Clean up files (best effort - don't fail if files don't exist)
-    try {
-      // Skip GCS URIs
-      if (!image.file_path.startsWith("gs://")) {
-        // Delete original file
-        await Deno.remove(image.file_path).catch(() => {});
-        
-        // Delete processed files for all device sizes
-        const processedBase = `data/processed`;
-        for (const size of ["small-portrait", "small-landscape", "medium-portrait", "medium-landscape", "large-landscape"]) {
-          await Deno.remove(join(processedBase, size, `${image.id}.jpg`)).catch(() => {});
-        }
-        
-        // Delete thumbnail
-        await Deno.remove(`data/processed/thumbnails/${image.id}.jpg`).catch(() => {});
-      }
-    } catch (error) {
-      // Ignore file deletion errors
-      console.warn(`Failed to delete files for image ${image.id}:`, error);
-    }
-    
-    console.log(`🗑️  Deleted image ${imageId} and ${deletedProcessed} processed versions`);
-    
-    return c.json({
-      success: true,
-      id: imageId,
-      processedDeleted: deletedProcessed,
-    });
-  } catch (error) {
-    console.error(`Failed to delete image ${imageId}:`, error);
-    return c.json(
-      {
-        error: error instanceof Error ? error.message : "Failed to delete image",
-      },
-      500
-    );
-  }
+  const successCount = results.filter(r => r.success).length;
+  const failCount = results.filter(r => !r.success).length;
+  
+  return c.json({
+    success: successCount > 0,
+    uploaded: successCount,
+    failed: failCount,
+    results,
+  });
 });
 
-/**
- * DELETE /api/admin/images/delete-all
- * Delete all images and their processed versions (for debugging)
- */
-admin.delete("/images/delete-all", async (c) => {
-  try {
-    const db = getDb();
+// Delete single image endpoint
+admin.delete("/images/:id", async (c) => {
+  const imageId = c.req.param("id"); // Could be source_id or blob_hash
+  const db = getFirestore();
+  
+  console.log(`[Admin] Deleting image: ${imageId}`);
+  
+  // Try to find as source first
+  let sourceDoc = await getSource(imageId);
+  
+  if (sourceDoc) {
+    // Found as source - delete it and check if we need to delete blob
+    const blobHash = sourceDoc.blob_hash;
     
-    // Get all image file paths before deleting
-    const images = db.prepare("SELECT id, file_path FROM images").all() as Array<{ id: string; file_path: string }>;
+    await deleteSource(imageId);
+    console.log(`[Admin] Deleted source: ${imageId}`);
     
-    // Delete from database first
-    const deletedImages = db.prepare("DELETE FROM images").run();
-    const deletedProcessed = db.prepare("DELETE FROM processed_images").run();
-    
-    // Clean up files (best effort - don't fail if files don't exist)
-    for (const image of images) {
-      try {
-        // Skip GCS URIs
-        if (image.file_path.startsWith("gs://")) {
-          continue;
+    // Check if this was the last source for the blob
+    if (blobHash) {
+      const otherSources = await getSourcesForBlob(blobHash);
+      
+      if (otherSources.length === 0) {
+        // Last source - delete blob and all variants
+        const blobDoc = await db.collection(Collections.BLOBS).doc(blobHash).get();
+        const blobData = blobDoc.data();
+        
+        // Delete blob (this will cascade to variants via helper)
+        await deleteBlob(blobHash);
+        console.log(`[Admin] Deleted blob and variants: ${blobHash}`);
+        
+        // Delete file from GCS
+        if (blobData?.storage_path) {
+          try {
+            await deleteFile(blobData.storage_path);
+            console.log(`[Admin] Deleted file from GCS: ${blobData.storage_path}`);
+          } catch (error) {
+            console.error(`[Admin] Failed to delete file from GCS:`, error);
+          }
         }
-        
-        // Delete original file
-        await Deno.remove(image.file_path).catch(() => {});
-        
-        // Delete processed files for all device sizes
-        const processedBase = `data/processed`;
-        for (const size of ["small-portrait", "small-landscape", "medium-portrait", "medium-landscape", "large-landscape"]) {
-          await Deno.remove(join(processedBase, size, `${image.id}.jpg`)).catch(() => {});
-        }
-        
-        // Delete thumbnail
-        await Deno.remove(`data/processed/thumbnails/${image.id}.jpg`).catch(() => {});
-      } catch (error) {
-        // Ignore file deletion errors
-        console.warn(`Failed to delete files for image ${image.id}:`, error);
       }
     }
     
-    console.log(`🗑️  Deleted ${deletedImages} images and ${deletedProcessed} processed versions`);
-    
-    return c.json({
-      success: true,
-      deleted: deletedImages,
-      processedDeleted: deletedProcessed,
-    });
-  } catch (error) {
-    console.error("Failed to delete all images:", error);
-    return c.json(
-      {
-        error: error instanceof Error ? error.message : "Failed to delete images",
-      },
-      500
-    );
+    return c.json({ success: true, id: imageId, type: 'source' });
   }
+  
+  // Not found as source, try as blob
+  const blobDoc = await db.collection(Collections.BLOBS).doc(imageId).get();
+  
+  if (blobDoc.exists) {
+    const blobData = blobDoc.data();
+    
+    // Check for sources referencing this blob
+    const sources = await getSourcesForBlob(imageId);
+    
+    if (sources.length > 0) {
+      return c.json({ 
+        error: "Cannot delete blob that is still referenced by sources",
+        sourceCount: sources.length
+      }, 400);
+    }
+    
+    // Delete blob and variants
+    await deleteBlob(imageId);
+    console.log(`[Admin] Deleted blob and variants: ${imageId}`);
+    
+    // Delete file from GCS
+    if (blobData?.storage_path) {
+      try {
+        await deleteFile(blobData.storage_path);
+        console.log(`[Admin] Deleted file from GCS: ${blobData.storage_path}`);
+      } catch (error) {
+        console.error(`[Admin] Failed to delete file from GCS:`, error);
+      }
+    }
+    
+    return c.json({ success: true, id: imageId, type: 'blob' });
+  }
+  
+  // Not found
+  return c.json({ error: "Image not found" }, 404);
+});
+
+// Delete all images endpoint
+admin.delete("/images/delete-all", async (c) => {
+  const db = getFirestore();
+  
+  console.log("[Admin] WARNING: Deleting all images");
+  
+  // Get all sources, blobs, and variants
+  const [sources, blobs, variants] = await Promise.all([
+    db.collection(Collections.SOURCES).get(),
+    db.collection(Collections.BLOBS).get(),
+    db.collection(Collections.DEVICE_VARIANTS).get(),
+  ]);
+  
+  console.log(`[Admin] Found ${sources.docs.length} sources, ${blobs.docs.length} blobs, ${variants.docs.length} variants`);
+  
+  // Firestore batch limit is 500 operations
+  const deleteBatch = async (docs: Awaited<ReturnType<ReturnType<Firestore['collection']>['get']>>['docs']) => {
+    for (let i = 0; i < docs.length; i += 500) {
+      const batch = db.batch();
+      const slice = docs.slice(i, Math.min(i + 500, docs.length));
+      slice.forEach(doc => batch.delete(doc.ref));
+      await batch.commit();
+      console.log(`[Admin] Deleted batch ${i / 500 + 1}: ${slice.length} documents`);
+    }
+  };
+  
+  // Delete all documents
+  await Promise.all([
+    deleteBatch(sources.docs),
+    deleteBatch(blobs.docs),
+    deleteBatch(variants.docs),
+  ]);
+  
+  console.log("[Admin] All images deleted from Firestore");
+  
+  // Note: GCS files cleanup could be done separately via lifecycle policies
+  // or by iterating through storage paths (which we didn't track)
+  
+  return c.json({
+    success: true,
+    deleted: sources.docs.length,
+    blobsDeleted: blobs.docs.length,
+    variantsDeleted: variants.docs.length,
+  });
 });
 
 export default admin;

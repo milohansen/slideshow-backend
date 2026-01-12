@@ -15,9 +15,7 @@ auth.get("/google", async (c) => {
   // Required scopes for Google Photos Picker API
   const scopes = ["openid", "profile", "email", "https://www.googleapis.com/auth/photospicker.mediaitems.readonly"];
 
-  const url = await google.createAuthorizationURL(state, codeVerifier, {
-    scopes: scopes,
-  });
+  const url = await google.createAuthorizationURL(state, codeVerifier, scopes);
 
   // Store state and code verifier in httpOnly cookies for security
   setCookie(c, "oauth_state", state, {

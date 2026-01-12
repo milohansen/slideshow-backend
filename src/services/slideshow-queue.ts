@@ -5,11 +5,42 @@
 
 import { getFirestore, Collections } from "../db/firestore.ts";
 import { getDevice, getDeviceQueueState, updateDeviceQueueState } from "../db/helpers-firestore.ts";
-import {
-  calculatePaletteSimilarity,
-  type ColorPalette,
-} from "./image-processing.ts";
 import { evaluateImageForLayouts, type LayoutSlot } from "./image-layout.ts";
+
+type ColorPalette = {
+  primary: string;
+  secondary: string;
+  tertiary: string;
+  sourceColor: string;
+  allColors: string[];
+}
+
+/**
+ * Calculate similarity between two color palettes
+ */
+function calculatePaletteSimilarity(palette1: ColorPalette, palette2: ColorPalette): number {
+  // Simple color distance calculation
+  // Returns a value between 0 (identical) and 1 (completely different)
+  const hexToRgb = (hex: string): [number, number, number] => {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result
+      ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
+      : [0, 0, 0];
+  };
+
+  const colorDistance = (rgb1: [number, number, number], rgb2: [number, number, number]): number => {
+    return Math.sqrt(
+      Math.pow(rgb1[0] - rgb2[0], 2) +
+      Math.pow(rgb1[1] - rgb2[1], 2) +
+      Math.pow(rgb1[2] - rgb2[2], 2)
+    ) / (255 * Math.sqrt(3)); // Normalize to 0-1
+  };
+
+  const primary1 = hexToRgb(palette1.primary);
+  const primary2 = hexToRgb(palette2.primary);
+
+  return colorDistance(primary1, primary2);
+}
 
 type QueueItem = {
   imageId: string;

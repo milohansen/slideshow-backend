@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { getDb } from "../db/schema.ts";
 import { getUserId } from "../middleware/auth.ts";
 import { createReadStream } from "../services/storage.ts";
 import { Devices } from "../views/devices.tsx";
@@ -8,192 +7,147 @@ import { Images } from "../views/images.tsx";
 import { PhotosPicker } from "../views/photos-picker.tsx";
 import { Queues } from "../views/queues.tsx";
 import { Upload } from "../views/upload.tsx";
+import { getFirestore, Collections } from "../db/firestore.ts";
+import {
+  getBlobsByOrientation,
+  getSourcesForBlob,
+  countVariantsForBlob,
+  getAllDevices,
+  getActivePickerSession,
+} from "../db/helpers-firestore.ts";
 
 const ui = new Hono();
 
 // Home page
-ui.get("/", (c) => {
-  const db = getDb();
-
-  // Get stats
-  const totalImages = db.prepare("SELECT COUNT(*) as count FROM images").get() as { count: number };
-  const totalDevices = db.prepare("SELECT COUNT(*) as count FROM devices").get() as { count: number };
-  const processedVariants = db.prepare("SELECT COUNT(*) as count FROM processed_images").get() as { count: number };
-
-  const orientations = db
-    .prepare(
-      `
-    SELECT orientation, COUNT(*) as count 
-    FROM images 
-    GROUP BY orientation
-  `
-    )
-    .all() as Array<{ orientation: string; count: number }>;
-
-  const orientationMap: Record<string, number> = {};
-  for (const row of orientations) {
-    orientationMap[row.orientation] = row.count;
-  }
+ui.get("/", async (c) => {
+  const db = getFirestore();
+  
+  // Get stats from Firestore
+  const [blobsSnapshot, devicesSnapshot, variantsSnapshot, orientations] = await Promise.all([
+    db.collection(Collections.BLOBS).count().get(),
+    db.collection(Collections.DEVICES).count().get(),
+    db.collection(Collections.DEVICE_VARIANTS).count().get(),
+    getBlobsByOrientation(),
+  ]);
 
   const stats = {
-    totalImages: totalImages.count,
-    totalDevices: totalDevices.count,
-    processedVariants: processedVariants.count,
-    orientations: orientationMap,
+    totalImages: blobsSnapshot.data().count,
+    totalDevices: devicesSnapshot.data().count,
+    processedVariants: variantsSnapshot.data().count,
+    orientations,
   };
 
   return c.html(<Home stats={stats} />);
 });
 
 // Devices page
-ui.get("/devices", (c) => {
-  const db = getDb();
+ui.get("/devices", async (c) => {
+  const db = getFirestore();
+  
+  const devicesSnapshot = await db.collection(Collections.DEVICES)
+    .orderBy("created_at", "desc")
+    .get();
 
-  const devices = db
-    .prepare(
-      `
-    SELECT id, name, width, height, orientation, created_at, last_seen
-    FROM devices
-    ORDER BY created_at DESC
-  `
-    )
-    .all() as Array<{
-    id: string;
-    name: string;
-    width: number;
-    height: number;
-    orientation: string;
-    created_at: string;
-    last_seen: string | null;
-  }>;
+  const devices = devicesSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      id: doc.id,
+      name: data.name,
+      width: data.width,
+      height: data.height,
+      orientation: data.orientation,
+      created_at: data.created_at,
+      last_seen: data.last_seen || null,
+    };
+  });
 
   return c.html(<Devices devices={devices} />);
 });
 
-// Retry failed image processing
-ui.post("/images/:id/retry", async (c) => {
-  const imageId = c.req.param("id");
-  const db = getDb();
+// Images page - with full metadata from Firestore
+ui.get("/images", async (c) => {
+  const db = getFirestore();
+  
+  // Get total devices count once (used for all images)
+  const devices = await getAllDevices();
+  const totalDevices = devices.length;
+  
+  const blobsSnapshot = await db.collection(Collections.BLOBS)
+    .orderBy("created_at", "desc")
+    .limit(100)
+    .get();
 
-  // Verify image exists
-  const image = db.prepare("SELECT id, processing_status FROM images WHERE id = ?").get(imageId) as { id: string; processing_status: string } | undefined;
-
-  if (!image) {
-    return c.redirect("/ui/images");
-  }
-
-  console.log(`[UI] Retrying processing for image: ${imageId}`);
-
-  // Reset status to pending and clear error
-  db.prepare("UPDATE images SET processing_status = 'pending', processing_error = NULL WHERE id = ?").run(imageId);
-
-  // Queue for processing
-  const { queueImageProcessing } = await import("../services/worker-queue.ts");
-  await queueImageProcessing(imageId);
-
-  return c.redirect("/ui/images");
-});
-
-// Images page
-ui.get("/images", (c) => {
-  const db = getDb();
-
-  // Get total device count
-  const deviceCountResult = db.prepare("SELECT COUNT(DISTINCT name) as total FROM devices").get() as { total: number };
-  const totalDevices = deviceCountResult.total;
-
-  const images = db
-    .prepare(
-      `
-    SELECT 
-      i.id,
-      i.file_path,
-      i.width,
-      i.height,
-      i.orientation,
-      i.processing_status,
-      i.processing_error,
-      p.color_primary,
-      p.color_secondary,
-      p.color_tertiary,
-      COUNT(DISTINCT p.device_size) as processed_count
-    FROM images i
-    LEFT JOIN processed_images p ON i.id = p.image_id
-    GROUP BY i.id
-    ORDER BY i.ingested_at DESC
-  `
-    )
-    .all() as Array<{
-    id: string;
-    file_path: string;
-    width: number;
-    height: number;
-    orientation: string;
-    processing_status: string;
-    processing_error: string | null;
-    color_primary: string | null;
-    color_secondary: string | null;
-    color_tertiary: string | null;
-    processed_count: number;
-  }>;
-
-  const imagesWithColors = images.map((img) => ({
-    id: img.id,
-    file_path: img.file_path,
-    width: img.width,
-    height: img.height,
-    orientation: img.orientation,
-    processingStatus: img.processing_status,
-    processingError: img.processing_error,
-    processedCount: img.processed_count,
-    totalDevices: totalDevices,
-    colors: img.color_primary
-      ? {
-          primary: img.color_primary,
-          secondary: img.color_secondary || "#000000",
-          tertiary: img.color_tertiary || "#000000",
-        }
-      : null,
+  // Fetch additional metadata for each blob in parallel
+  const imagesWithColors = await Promise.all(blobsSnapshot.docs.map(async (doc) => {
+    const data = doc.data();
+    const blobHash = doc.id;
+    const palette = data.color_palette ? JSON.parse(data.color_palette) : null;
+    
+    // Get sources for this blob to check processing status
+    const sources = await getSourcesForBlob(blobHash);
+    
+    // Determine overall processing status (if any source is failed, mark as failed, etc.)
+    let processingStatus = 'complete';
+    let processingError = null;
+    
+    if (sources.length > 0) {
+      const hasFailedSource = sources.some(s => s.status === 'failed');
+      const hasProcessingSource = sources.some(s => s.status === 'processing');
+      const hasStagedSource = sources.some(s => s.status === 'staged');
+      
+      if (hasFailedSource) {
+        processingStatus = 'failed';
+        const failedSource = sources.find(s => s.status === 'failed');
+        processingError = failedSource?.status_message || 'Processing failed';
+      } else if (hasProcessingSource) {
+        processingStatus = 'processing';
+      } else if (hasStagedSource) {
+        processingStatus = 'staged';
+      }
+    }
+    
+    // Count processed variants
+    const processedCount = await countVariantsForBlob(blobHash);
+    
+    return {
+      id: blobHash,
+      file_path: data.storage_path,
+      width: data.width,
+      height: data.height,
+      orientation: data.orientation,
+      processingStatus,
+      processingError,
+      processedCount,
+      totalDevices,
+      colors: palette ? {
+        primary: palette.primary || '#000000',
+        secondary: palette.secondary || '#000000',
+        tertiary: palette.tertiary || '#000000',
+      } : null,
+    };
   }));
 
   return c.html(<Images images={imagesWithColors} />);
 });
 
 // Queues page
-ui.get("/queues", (c) => {
-  const db = getDb();
-
-  // Get all devices with queue state
-  const deviceQueues = db
-    .prepare(
-      `
-    SELECT 
-      d.id,
-      d.name,
-      q.queue_data,
-      q.current_index
-    FROM devices d
-    LEFT JOIN device_queue_state q ON d.id = q.device_id
-    WHERE q.queue_data IS NOT NULL
-    ORDER BY d.created_at DESC
-  `
-    )
-    .all() as Array<{
-    id: string;
-    name: string;
-    queue_data: string;
-    current_index: number;
-  }>;
-
-  const queues = deviceQueues.map((dq) => {
-    const queueData = JSON.parse(dq.queue_data);
+ui.get("/queues", async (c) => {
+  const db = getFirestore();
+  
+  const queueStatesSnapshot = await db.collection(Collections.DEVICE_QUEUE_STATE).get();
+  
+  const queues = await Promise.all(queueStatesSnapshot.docs.map(async doc => {
+    const data = doc.data();
+    const deviceDoc = await db.collection(Collections.DEVICES).doc(doc.id).get();
+    const deviceData = deviceDoc.data();
+    
     return {
-      deviceId: dq.id,
-      deviceName: dq.name,
-      queue: queueData.queue || [],
-      currentIndex: dq.current_index,
+      deviceId: doc.id,
+      deviceName: deviceData?.name || doc.id,
+      queue: data.queue || [],
+      currentIndex: data.current_index || 0,
     };
-  });
+  }));
 
   return c.html(<Queues queues={queues} />);
 });
@@ -225,28 +179,62 @@ ui.get("/photos-picker", async (c) => {
 
   if (!userId) {
     // Not authenticated, redirect to login
-    console.log("[UI] User not authenticated, redirecting to /auth/google", Deno.env.get("CLIENT_ID"), Deno.env.get("REDIRECT_URI"));
+    console.log("[UI] User not authenticated, redirecting to /auth/google");
     return c.redirect("/auth/google");
   }
 
-  // Check if there's a non-expired picker session for this user
-  const db = getDb();
-  const now = new Date().toISOString();
+  // Get active picker session for user
+  const session = await getActivePickerSession(userId);
 
-  const session = db
-    .prepare(
-      `
-    SELECT picker_session_id, picker_uri, created_at, expire_time
-    FROM picker_sessions 
-    WHERE user_id = ? 
-      AND (expire_time IS NULL OR expire_time > ?)
-    ORDER BY created_at DESC 
-    LIMIT 1
-  `
-    )
-    .get(userId, now) as { picker_session_id: string; picker_uri: string; created_at: string; expire_time: string | null } | undefined;
+  return c.html(<PhotosPicker session={session ? {
+    sessionId: session.picker_session_id,
+    pickerUri: session.picker_uri,
+  } : null} />);
+});
 
-  return c.html(<PhotosPicker session={session ? { sessionId: session.picker_session_id, pickerUri: session.picker_uri } : null} />);
+// Retry failed image processing
+ui.post("/images/:id/retry", async (c) => {
+  const imageId = c.req.param("id"); // Could be source_id or blob_hash
+  const db = getFirestore();
+  
+  // Try to find source by id first
+  let sourceDoc;
+  try {
+    sourceDoc = await db.collection(Collections.SOURCES).doc(imageId).get();
+  } catch {
+    // Not found by id, try blob_hash
+    const snapshot = await db.collection(Collections.SOURCES)
+      .where("blob_hash", "==", imageId)
+      .where("status", "==", "failed")
+      .limit(1)
+      .get();
+    sourceDoc = snapshot.empty ? null : snapshot.docs[0];
+  }
+  
+  if (!sourceDoc?.exists) {
+    console.log(`[UI] Source not found for retry: ${imageId}`);
+    return c.redirect("/ui/images");
+  }
+  
+  console.log(`[UI] Retrying source: ${sourceDoc.id}`);
+  
+  // Update status back to staged
+  await sourceDoc.ref.update({
+    status: 'staged',
+    status_message: null,
+    processed_at: null,
+  });
+  
+  // Queue for processing via job queue v2
+  try {
+    const { queueSourceProcessing } = await import("../services/job-queue-v2.ts");
+    await queueSourceProcessing(sourceDoc.id);
+    console.log(`[UI] Source queued for reprocessing: ${sourceDoc.id}`);
+  } catch (error) {
+    console.error(`[UI] Failed to queue source: ${error}`);
+  }
+  
+  return c.redirect("/ui/images");
 });
 
 export default ui;

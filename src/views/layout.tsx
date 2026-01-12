@@ -1,8 +1,11 @@
+/** @jsx jsx */
+/** @jsxImportSource hono/jsx */
 import type { FC } from "hono/jsx";
+import type { Child } from "hono/jsx";
 
 interface LayoutProps {
   title: string;
-  children: JSX.Element | JSX.Element[];
+  children: Child | Child[];
 }
 
 export const Layout: FC<LayoutProps> = ({ title, children }) => {

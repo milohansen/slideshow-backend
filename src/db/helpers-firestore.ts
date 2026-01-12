@@ -66,6 +66,34 @@ export async function updateBlobColors(
   });
 }
 
+/**
+ * Update blob with partial data
+ */
+export async function updateBlob(
+  hash: string,
+  updates: Partial<Blob>
+): Promise<void> {
+  const db = getFirestore();
+  await db.collection(Collections.BLOBS).doc(hash).update(updates);
+}
+
+/**
+ * Get blobs by orientation
+ */
+export async function getBlobsByOrientation(): Promise<Record<string, number>> {
+  const db = getFirestore();
+  const snapshot = await db.collection(Collections.BLOBS).get();
+  
+  const orientationMap: Record<string, number> = {};
+  snapshot.docs.forEach(doc => {
+    const blob = doc.data() as Blob;
+    const orientation = blob.orientation || 'unknown';
+    orientationMap[orientation] = (orientationMap[orientation] || 0) + 1;
+  });
+  
+  return orientationMap;
+}
+
 // ========== Source Operations ==========
 
 /**
@@ -161,6 +189,13 @@ export async function getSourcesForBlob(blobHash: string): Promise<Source[]> {
 }
 
 /**
+ * Get sources ready for processing (staged status)
+ */
+export async function getStagedSources(limit?: number): Promise<Source[]> {
+  return getSourcesByStatus("staged", limit);
+}
+
+/**
  * Count sources by status
  */
 export async function countSourcesByStatus(): Promise<Record<string, number>> {
@@ -236,6 +271,33 @@ export async function getDeviceVariantsForBlob(blobHash: string): Promise<Device
     .get();
   
   return snapshot.docs.map(doc => doc.data() as DeviceVariant);
+}
+
+/**
+ * Count device variants for a blob
+ */
+export async function countVariantsForBlob(blobHash: string): Promise<number> {
+  const db = getFirestore();
+  const snapshot = await db.collection(Collections.DEVICE_VARIANTS)
+    .where("blob_hash", "==", blobHash)
+    .count()
+    .get();
+  
+  return snapshot.data().count;
+}
+
+/**
+ * Delete all variants for a blob
+ */
+export async function deleteVariantsForBlob(blobHash: string): Promise<void> {
+  const db = getFirestore();
+  const variants = await db.collection(Collections.DEVICE_VARIANTS)
+    .where("blob_hash", "==", blobHash)
+    .get();
+  
+  const batch = db.batch();
+  variants.docs.forEach(doc => batch.delete(doc.ref));
+  await batch.commit();
 }
 
 /**
@@ -542,6 +604,28 @@ export async function deleteExpiredPickerSessions(): Promise<void> {
   await batch.commit();
   
   console.log(`Deleted ${snapshot.size} expired picker sessions`);
+}
+
+/**
+ * Get active picker session for a user
+ */
+export async function getActivePickerSession(userId: string): Promise<PickerSession | null> {
+  const db = getFirestore();
+  const now = nowISO();
+  
+  const snapshot = await db.collection(Collections.PICKER_SESSIONS)
+    .where("user_id", "==", userId)
+    .where("expire_time", ">", now)
+    .orderBy("expire_time", "desc")
+    .orderBy("created_at", "desc")
+    .limit(1)
+    .get();
+  
+  if (snapshot.empty) {
+    return null;
+  }
+  
+  return snapshot.docs[0].data() as PickerSession;
 }
 
 // ========== Failed Task Operations ==========
