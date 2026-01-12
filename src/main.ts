@@ -1,18 +1,18 @@
+import { crypto } from "@std/crypto";
 import { Hono } from "hono";
-import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 import { serveStatic } from "hono/deno";
+import { logger } from "hono/logger";
 import { initFirestore } from "./db/firestore.ts";
-import { initStorage } from "./services/storage.ts";
-import { initMetadataSync, stopMetadataSync } from "./services/metadata-sync.ts";
-import { initJobQueue, shutdownJobQueue } from "./services/job-queue.ts";
-import { crypto } from "@std/crypto";
-import deviceRoutes from "./routes/devices.ts";
+import { optionalAuth } from "./middleware/auth.ts";
 import adminRoutes from "./routes/admin.ts";
-import uiRoutes from "./routes/ui.tsx";
 import authRoutes from "./routes/auth.ts";
+import deviceRoutes from "./routes/devices.ts";
 import processingRoutes from "./routes/processing.ts";
-import { requireAuth, optionalAuth } from "./middleware/auth.ts";
+import uiRoutes from "./routes/ui.tsx";
+import { initJobQueue, shutdownJobQueue } from "./services/job-queue.ts";
+import { initMetadataSync, stopMetadataSync } from "./services/metadata-sync.ts";
+import { initStorage } from "./services/storage.ts";
 
 const app = new Hono();
 
@@ -38,8 +38,8 @@ initJobQueue();
 
 // Health check endpoint for Cloud Run
 app.get("/_health", (c) => {
-  return c.json({ 
-    status: "healthy", 
+  return c.json({
+    status: "healthy",
     timestamp: new Date().toISOString(),
   });
 });
@@ -73,25 +73,28 @@ app.get("/", (c) => {
 // Cloud Run sets PORT environment variable (default to 8080 for local dev)
 const port = Number(Deno.env.get("PORT")) || 8080;
 
-const server = Deno.serve({ 
-  port, 
-  hostname: "0.0.0.0",
-  onListen: ({ hostname, port }) => {
-    console.log(`🚀 Server running on http://${hostname}:${port}`);
-  }
-}, app.fetch);
+const server = Deno.serve(
+  {
+    port,
+    hostname: "0.0.0.0",
+    onListen: ({ hostname, port }) => {
+      console.log(`🚀 Server running on http://${hostname}:${port}`);
+    },
+  },
+  app.fetch
+);
 
 // Graceful shutdown handling for Cloud Run
 const shutdown = async (signal: string) => {
   console.log(`\n${signal} received, starting graceful shutdown...`);
-  
+
   try {
     // Flush pending job queue
     await shutdownJobQueue();
-    
+
     // Stop metadata sync
     stopMetadataSync();
-    
+
     await server.shutdown();
     console.log("Server closed successfully");
     Deno.exit(0);
