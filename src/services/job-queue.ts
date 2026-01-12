@@ -1,160 +1,109 @@
 /**
- * Job Queue Service for Cloud Run Jobs
- * Replaces worker-queue.ts with Cloud Run Jobs API
+ * Cloud Tasks Queue Service
+ * Manages image processing tasks via GCP Cloud Tasks
  */
 
-import { JobsClient } from "@google-cloud/run";
+import { CloudTasksClient } from "@google-cloud/tasks";
+import { Buffer } from "node:buffer";
 
-interface JobQueueConfig {
+interface TaskQueueConfig {
   projectId: string;
-  region: string;
-  jobName: string;
-  backendApiUrl: string;
-  authToken: string;
+  location: string;
+  queueName: string;
+  workflowUrl: string;
+  serviceAccountEmail: string;
 }
 
-class JobQueueManager {
-  private config: JobQueueConfig;
-  private pendingImages: Set<string> = new Set();
-  private flushTimer: number | null = null;
-  private readonly BATCH_SIZE = 50;
-  private readonly FLUSH_DELAY_MS = 30000; // 30 seconds
+class CloudTaskQueue {
+  private config: TaskQueueConfig;
+  private client: CloudTasksClient;
+  private queuePath: string;
 
-  constructor(config: JobQueueConfig) {
+  constructor(config: TaskQueueConfig) {
     this.config = config;
-    console.log(`[JobQueue] Initialized for job: ${config.jobName}`);
+    this.client = new CloudTasksClient();
+    this.queuePath = this.client.queuePath(
+      config.projectId,
+      config.location,
+      config.queueName
+    );
+    console.log(`[CloudTasks] Initialized queue: ${this.queuePath}`);
   }
 
   /**
-   * Queue an image for processing
+   * Create a task for processing a single image via Workflow
    */
-  async queueImage(imageId: string): Promise<void> {
-    console.log(`[JobQueue] Queuing image: ${imageId}`);
+  async createTask(imageId: string): Promise<void> {
+    console.log(`[CloudTasks] Creating task for image: ${imageId}`);
+
+    const payload = JSON.stringify({ 
+      argument: JSON.stringify({ file_id: imageId })
+    });
     
-    this.pendingImages.add(imageId);
-
-    // Trigger immediately if we've hit batch size
-    if (this.pendingImages.size >= this.BATCH_SIZE) {
-      await this.flush();
-    } else {
-      // Otherwise, schedule a flush
-      this.scheduleFlush();
-    }
-  }
-
-  /**
-   * Schedule a delayed flush
-   */
-  private scheduleFlush() {
-    if (this.flushTimer !== null) {
-      return; // Already scheduled
-    }
-
-    this.flushTimer = setTimeout(() => {
-      this.flush().catch(err => 
-        console.error("[JobQueue] Error during scheduled flush:", err)
-      );
-    }, this.FLUSH_DELAY_MS);
-  }
-
-  /**
-   * Flush pending images and trigger the Cloud Run Job
-   */
-  async flush(): Promise<void> {
-    // Clear timer
-    if (this.flushTimer !== null) {
-      clearTimeout(this.flushTimer);
-      this.flushTimer = null;
-    }
-
-    if (this.pendingImages.size === 0) {
-      return; // Nothing to flush
-    }
-
-    const imageCount = this.pendingImages.size;
-    console.log(`[JobQueue] Flushing ${imageCount} images to Cloud Run Job`);
-
-    // Clear the pending set
-    this.pendingImages.clear();
+    const task = {
+      httpRequest: {
+        httpMethod: "POST" as const,
+        url: this.config.workflowUrl,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: Buffer.from(payload).toString("base64"),
+        oidcToken: {
+          serviceAccountEmail: this.config.serviceAccountEmail,
+        },
+      },
+    };
 
     try {
-      await this.triggerJob();
-      console.log(`[JobQueue] ✅ Successfully triggered job for ${imageCount} images`);
-    } catch (error) {
-      console.error("[JobQueue] ❌ Failed to trigger job:", error);
-      // Note: Images remain in 'pending' state in database, will be retried on next trigger
-    }
-  }
-
-  /**
-   * Trigger the Cloud Run Job
-   */
-  private async triggerJob(): Promise<void> {
-    const { config } = this;
-
-    const client = new JobsClient();
-    const jobPath = `projects/${config.projectId}/locations/${config.region}/jobs/${config.jobName}`;
-
-    try {
-      // Execute the job
-      const [operation] = await client.runJob({
-        name: jobPath,
+      const [response] = await this.client.createTask({
+        parent: this.queuePath,
+        task,
       });
-
-      console.log(`[JobQueue] Job execution started: ${operation?.name || 'unknown'}`);
+      console.log(`[CloudTasks] ✅ Task created: ${response.name}`);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      // Check if error is due to missing Cloud Run API
-      if (errorMessage.includes("not found") || errorMessage.includes("ENOENT")) {
-        console.warn("[JobQueue] ⚠️ Cloud Run Jobs API not available - running in local mode");
-        console.warn("[JobQueue] Images will remain in 'pending' state until job is triggered manually");
-        return;
-      }
+      console.error(`[CloudTasks] ❌ Failed to create task for ${imageId}:`, errorMessage);
       throw error;
     }
-  }
-
-  /**
-   * Get status of pending images
-   */
-  getStatus() {
-    return {
-      pendingCount: this.pendingImages.size,
-      hasScheduledFlush: this.flushTimer !== null,
-    };
   }
 }
 
 // Singleton instance
-let queueManager: JobQueueManager | null = null;
+let taskQueue: CloudTaskQueue | null = null;
 
 /**
- * Initialize the job queue manager
+ * Initialize the Cloud Tasks queue
  */
 export function initJobQueue() {
   const projectId = Deno.env.get("GCP_PROJECT_ID") || Deno.env.get("GOOGLE_CLOUD_PROJECT");
-  const region = Deno.env.get("GCP_REGION") || "us-central1";
-  const jobName = Deno.env.get("PROCESSOR_JOB_NAME") || "slideshow-processor";
-  const backendApiUrl = Deno.env.get("BACKEND_API_URL") || `http://localhost:${Deno.env.get("PORT") || 8080}`;
-  const authToken = Deno.env.get("PROCESSOR_AUTH_TOKEN");
+  const location = Deno.env.get("CLOUD_TASKS_LOCATION") || "northamerica-northeast1";
+  const queueName = Deno.env.get("CLOUD_TASKS_QUEUE") || "image-processing-queue";
+  const workflowUrl = Deno.env.get("WORKFLOW_URL");
+  const serviceAccountEmail = Deno.env.get("WORKFLOW_SERVICE_ACCOUNT");
 
   if (!projectId) {
-    console.warn("⚠️ GCP_PROJECT_ID not set - job queue will run in local mode");
+    console.warn("⚠️ GCP_PROJECT_ID not set - task queue will not function");
+    return;
   }
 
-  if (!authToken) {
-    console.warn("⚠️ PROCESSOR_AUTH_TOKEN not set - processor authentication disabled");
+  if (!workflowUrl) {
+    console.warn("⚠️ WORKFLOW_URL not set - task queue will not function");
+    return;
   }
 
-  queueManager = new JobQueueManager({
-    projectId: projectId || "",
-    region,
-    jobName,
-    backendApiUrl,
-    authToken: authToken || "",
+  if (!serviceAccountEmail) {
+    console.warn("⚠️ WORKFLOW_SERVICE_ACCOUNT not set - using default service account");
+  }
+
+  taskQueue = new CloudTaskQueue({
+    projectId,
+    location,
+    queueName,
+    workflowUrl,
+    serviceAccountEmail: serviceAccountEmail || `${projectId}@appspot.gserviceaccount.com`,
   });
 
-  console.log("✅ Job queue manager initialized");
+  console.log("✅ Cloud Tasks queue manager initialized");
 }
 
 /**
@@ -162,37 +111,25 @@ export function initJobQueue() {
  * This is called from image-ingestion.ts when new images are added
  */
 export async function queueImageProcessing(imageId: string): Promise<void> {
-  if (!queueManager) {
-    console.warn("[JobQueue] Queue manager not initialized, skipping queue");
+  if (!taskQueue) {
+    console.warn("[CloudTasks] Task queue not initialized, skipping queue");
     return;
   }
 
-  await queueManager.queueImage(imageId);
+  await taskQueue.createTask(imageId);
 }
 
 /**
- * Manually flush pending images (useful for testing)
- */
-export async function flushQueue(): Promise<void> {
-  if (!queueManager) {
-    console.warn("[JobQueue] Queue manager not initialized");
-    return;
-  }
-
-  await queueManager.flush();
-}
-
-/**
- * Get queue status
+ * Get queue status (Cloud Tasks manages queue state)
  */
 export function getQueueStatus() {
-  if (!queueManager) {
+  if (!taskQueue) {
     return { initialized: false };
   }
 
   return {
     initialized: true,
-    ...queueManager.getStatus(),
+    type: "cloud-tasks",
   };
 }
 
@@ -200,11 +137,10 @@ export function getQueueStatus() {
  * Shutdown the queue manager
  */
 export async function shutdownJobQueue(): Promise<void> {
-  if (!queueManager) {
+  if (!taskQueue) {
     return;
   }
 
-  console.log("[JobQueue] Shutting down...");
-  await queueManager.flush();
-  queueManager = null;
+  console.log("[CloudTasks] Shutting down...");
+  taskQueue = null;
 }

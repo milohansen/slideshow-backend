@@ -140,6 +140,21 @@ export async function initDatabase() {
     )
   `);
 
+  // Failed tasks table - stores tasks that exhausted Cloud Tasks retries
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS failed_tasks (
+      id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      task_name TEXT NOT NULL,
+      image_id TEXT,
+      payload TEXT NOT NULL,
+      error_message TEXT,
+      attempt_count INTEGER DEFAULT 1,
+      last_attempt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
+    )
+  `);
+
   // Auth sessions table - stores OAuth tokens for authenticated users
   db.exec(`
     CREATE TABLE IF NOT EXISTS auth_sessions (

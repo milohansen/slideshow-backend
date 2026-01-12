@@ -30,7 +30,7 @@ steps:
       - '--timeout'
       - '300'
       - '--set-env-vars'
-      - 'GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=northamerica-northeast1,PROCESSOR_JOB_NAME=slideshow-processor'
+      - 'GCP_PROJECT_ID=$PROJECT_ID,GCP_REGION=northamerica-northeast1,CLOUD_TASKS_QUEUE=image-processing-queue,CLOUD_TASKS_LOCATION=northamerica-northeast1,WORKFLOW_URL=https://workflowexecutions.googleapis.com/v1/projects/crafty-router-207406/locations/northamerica-northeast1/workflows/trigger-image-job/executions,WORKFLOW_SERVICE_ACCOUNT=YOUR_SERVICE_ACCOUNT@crafty-router-207406.iam.gserviceaccount.com'
 
 images:
   - 'gcr.io/$PROJECT_ID/slideshow-backend:$COMMIT_SHA'

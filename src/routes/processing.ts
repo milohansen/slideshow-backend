@@ -255,6 +255,53 @@ app.patch("/:id/failed", async (c) => {
 });
 
 /**
+ * POST /api/processing/:imageId/failed
+ * Records a failed task after Cloud Tasks exhausts retries
+ * Called by processor when max retries reached
+ */
+app.post("/:imageId/failed", async (c) => {
+  const imageId = c.req.param("imageId");
+  const body = await c.req.json();
+  const errorMessage = body.error_message as string || "Processing failed after max retries";
+  const attemptCount = body.attempt_count as number || 3;
+
+  const db = getDb();
+
+  try {
+    // Insert into failed_tasks table
+    const taskId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO failed_tasks (
+        id, task_name, image_id, payload, error_message, attempt_count, last_attempt
+      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).run(
+      taskId,
+      "process-image",
+      imageId,
+      JSON.stringify({ imageId }),
+      errorMessage,
+      attemptCount
+    );
+
+    // Update image status to failed
+    db.prepare(`
+      UPDATE images
+      SET processing_status = 'failed',
+          processing_error = ?
+      WHERE id = ?
+    `).run(errorMessage, imageId);
+
+    console.log(`❌ Recorded failed task for image ${imageId} (${attemptCount} attempts): ${errorMessage}`);
+
+    return c.json({ success: true, taskId });
+  } catch (error) {
+    console.error(`Failed to record failed task for ${imageId}:`, error);
+    const err = error instanceof Error ? error.message : String(error);
+    return c.json({ error: err }, 500);
+  }
+});
+
+/**
  * V2 API: Check if a blob hash already exists (duplicate detection)
  * GET /api/processing/check-hash/:hash
  */
