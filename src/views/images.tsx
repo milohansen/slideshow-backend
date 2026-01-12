@@ -54,6 +54,7 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                 <th>Orientation</th>
                 <th>Processing Status</th>
                 <th>Color Palette</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -138,6 +139,16 @@ export const Images: FC<ImagesProps> = ({ images }) => {
                     ) : (
                       <span style="color: #999;">Not processed yet</span>
                     )}
+                  </td>
+                  <td>
+                    <button 
+                      class="delete-image-btn btn-small"
+                      data-image-id={image.id}
+                      style="padding: 0.25rem 0.5rem; font-size: 0.85rem; background-color: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                      title="Delete this image"
+                    >
+                      🗑️
+                    </button>
                   </td>
                 </tr>
                 );

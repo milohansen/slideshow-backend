@@ -363,6 +363,66 @@ admin.post("/photos/picker/:sessionId/ingest", async (c) => {
 });
 
 /**
+ * DELETE /api/admin/images/:id
+ * Delete a single image and its processed versions
+ */
+admin.delete("/images/:id", async (c) => {
+  const imageId = c.req.param("id");
+  
+  try {
+    const db = getDb();
+    
+    // Get image info before deleting
+    const image = db.prepare("SELECT id, file_path FROM images WHERE id = ?").get(imageId) as { id: string; file_path: string } | undefined;
+    
+    if (!image) {
+      return c.json({ error: "Image not found" }, 404);
+    }
+    
+    // Delete from database first
+    const deletedImages = db.prepare("DELETE FROM images WHERE id = ?").run(imageId);
+    const deletedProcessed = db.prepare("DELETE FROM processed_images WHERE image_id = ?").run(imageId);
+    
+    // Clean up files (best effort - don't fail if files don't exist)
+    try {
+      // Skip GCS URIs
+      if (!image.file_path.startsWith("gs://")) {
+        // Delete original file
+        await Deno.remove(image.file_path).catch(() => {});
+        
+        // Delete processed files for all device sizes
+        const processedBase = `data/processed`;
+        for (const size of ["small-portrait", "small-landscape", "medium-portrait", "medium-landscape", "large-landscape"]) {
+          await Deno.remove(join(processedBase, size, `${image.id}.jpg`)).catch(() => {});
+        }
+        
+        // Delete thumbnail
+        await Deno.remove(`data/processed/thumbnails/${image.id}.jpg`).catch(() => {});
+      }
+    } catch (error) {
+      // Ignore file deletion errors
+      console.warn(`Failed to delete files for image ${image.id}:`, error);
+    }
+    
+    console.log(`🗑️  Deleted image ${imageId} and ${deletedProcessed} processed versions`);
+    
+    return c.json({
+      success: true,
+      id: imageId,
+      processedDeleted: deletedProcessed,
+    });
+  } catch (error) {
+    console.error(`Failed to delete image ${imageId}:`, error);
+    return c.json(
+      {
+        error: error instanceof Error ? error.message : "Failed to delete image",
+      },
+      500
+    );
+  }
+});
+
+/**
  * DELETE /api/admin/images/delete-all
  * Delete all images and their processed versions (for debugging)
  */

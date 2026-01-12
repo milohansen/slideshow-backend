@@ -34,4 +34,49 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  
+  // Delete single image
+  const deleteImageBtns = document.querySelectorAll('.delete-image-btn');
+  
+  deleteImageBtns.forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const imageId = e.target.dataset.imageId;
+      const row = e.target.closest('tr');
+      const fileName = row.querySelector('code')?.textContent || 'this image';
+      
+      const confirmed = confirm(`⚠️ Are you sure you want to delete "${fileName}"? This cannot be undone!`);
+      
+      if (!confirmed) {
+        return;
+      }
+      
+      btn.disabled = true;
+      const originalText = btn.textContent;
+      btn.textContent = '⏳';
+      
+      try {
+        const response = await fetch(`/api/admin/images/${imageId}`, {
+          method: 'DELETE',
+        });
+        
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to delete image');
+        }
+        
+        // Remove the row from the table
+        row.remove();
+        
+        // Check if there are no more images
+        const tbody = document.querySelector('tbody');
+        if (tbody && tbody.children.length === 0) {
+          window.location.reload();
+        }
+      } catch (error) {
+        alert('Failed to delete image: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = originalText;
+      }
+    });
+  });
 });
