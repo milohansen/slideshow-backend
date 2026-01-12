@@ -1,9 +1,10 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-ffi
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-ffi --allow-net
 /**
  * Register devices from DEVICES.md file
  */
 
-import { initDatabase } from "./db/schema.ts";
+import { initFirestore } from "./db/firestore.ts";
+import { upsertDevice, getAllDevices } from "./db/helpers-firestore.ts";
 
 type Device = {
   id: string;
@@ -46,29 +47,29 @@ const devices: Device[] = [
 ];
 
 async function registerDevices() {
-  await initDatabase();
+  await initFirestore();
   
-  const { getDb } = await import("./db/schema.ts");
-  const db = getDb();
-
-  console.log("Registering devices from DEVICES.md...\n");
+  console.log(`Registering ${devices.length} devices...\n`);
 
   for (const device of devices) {
-    db.prepare(`
-      INSERT INTO devices (id, name, width, height, orientation, last_seen)
-      VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-      ON CONFLICT(id) DO UPDATE SET
-        name = excluded.name,
-        width = excluded.width,
-        height = excluded.height,
-        orientation = excluded.orientation,
-        last_seen = CURRENT_TIMESTAMP
-    `).run(device.id, device.name, device.width, device.height, device.orientation);
-
-    console.log(`✓ Registered: ${device.name} (${device.area}) - ${device.width}x${device.height} ${device.orientation} ${device.type}`);
+    console.log(`Registering ${device.name}...`);
+    await upsertDevice({
+      id: device.id,
+      name: device.name,
+      width: device.width,
+      height: device.height,
+      orientation: device.orientation,
+      gap: 0,
+      created_at: new Date().toISOString(),
+      last_seen: new Date().toISOString(),
+    });
+    console.log(`  ✓ ${device.name} (${device.width}x${device.height} ${device.orientation})`);
   }
 
-  console.log(`\n✅ Successfully registered ${devices.length} devices`);
+  console.log("\n✅ All devices registered");
+  console.log("\nCurrent devices:");
+  const allDevices = await getAllDevices();
+  allDevices.forEach(d => console.log(`  - ${d.id}: ${d.name} (${d.width}x${d.height} ${d.orientation})`));
 }
 
 if (import.meta.main) {

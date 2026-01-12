@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getAccessToken, getUserId } from "../middleware/auth.ts";
-import { createPickerSession, deletePickerSession, getAllMediaItems, getPickerSessionStatus, updatePickerSession } from "../services/google-photos.ts";
+import { createPickerSession, deletePickerSession, getAllMediaItems, getPickerSessionStatus, getPickerSessionFromDb } from "../services/google-photos.ts";
+import { updatePickerSession } from "../db/helpers-firestore.ts";
 
 const photos = new Hono();
 
@@ -62,8 +63,11 @@ photos.get("/picker/:sessionId", async (c) => {
     //   }, 410); // 410 Gone
     // }
 
-    // Update local database
-    updatePickerSession(sessionId, status.mediaItemsSet);
+    // Update local database - need to find the document ID first
+    const dbSession = await getPickerSessionFromDb(sessionId);
+    if (dbSession) {
+      await updatePickerSession(dbSession.id, { media_items_set: status.mediaItemsSet });
+    }
 
     return c.json({
       success: true,

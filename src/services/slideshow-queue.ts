@@ -3,7 +3,8 @@
  * Generates infinite shuffled sequences with layout-aware variant selection
  */
 
-import { getDb } from "../db/schema.ts";
+import { getFirestore, Collections } from "../db/firestore.ts";
+import { getDevice, getDeviceQueueState, updateDeviceQueueState } from "../db/helpers-firestore.ts";
 import {
   calculatePaletteSimilarity,
   type ColorPalette,
@@ -48,20 +49,14 @@ function shuffleArray<T>(array: T[]): T[] {
 /**
  * Generate slideshow queue for a device with layout-aware variant selection
  */
-export function generateSlideshowQueue(
+export async function generateSlideshowQueue(
   deviceId: string,
   queueSize = 100
-): SlideshowQueue {
-  const db = getDb();
+): Promise<SlideshowQueue> {
+  const db = getFirestore();
 
   // Get device info including layouts
-  const device = db.prepare("SELECT * FROM devices WHERE id = ?").get(deviceId) as {
-    id: string;
-    width: number;
-    height: number;
-    orientation: string;
-    layouts: string | null;
-  } | undefined;
+  const device = await getDevice(deviceId);
 
   if (!device) {
     throw new Error(`Device not found: ${deviceId}`);
@@ -75,26 +70,29 @@ export function generateSlideshowQueue(
     return generateLegacyQueue(deviceId, device, queueSize);
   }
 
-  // Get all blobs with their dimensions
-  const blobs = db.prepare(`
-    SELECT 
-      b.hash as blob_hash,
-      b.width,
-      b.height,
-      b.orientation,
-      b.color_palette,
-      b.color_source
-    FROM blobs b
-    WHERE b.hash IN (SELECT DISTINCT blob_hash FROM device_variants)
-    ORDER BY b.hash
-  `).all() as Array<{
-    blob_hash: string;
-    width: number;
-    height: number;
-    orientation: string;
-    color_palette: string | null;
-    color_source: string | null;
-  }>;
+  // Get all device_variants to find unique blob hashes
+  const variantsSnapshot = await db.collection(Collections.DEVICE_VARIANTS).get();
+  const uniqueBlobHashes = [...new Set(variantsSnapshot.docs.map(d => d.data().blob_hash))];
+
+  // Batch get all blobs (Firestore supports up to 500 per batch)
+  const blobPromises = uniqueBlobHashes.map(hash =>
+    db.collection(Collections.BLOBS).doc(hash).get()
+  );
+  const blobDocs = await Promise.all(blobPromises);
+  
+  const blobs = blobDocs
+    .filter(doc => doc.exists)
+    .map(doc => {
+      const data = doc.data()!;
+      return {
+        blob_hash: doc.id,
+        width: data.width,
+        height: data.height,
+        orientation: data.orientation,
+        color_palette: data.color_palette,
+        color_source: data.color_source,
+      };
+    });
 
   if (blobs.length === 0) {
     return {
@@ -129,25 +127,26 @@ export function generateSlideshowQueue(
     const bestLayout = layoutEvals[0];
 
     // Find the corresponding device_variant
-    const variant = db.prepare(`
-      SELECT storage_path, width, height, layout_type
-      FROM device_variants
-      WHERE blob_hash = ? 
-        AND width = ? 
-        AND height = ?
-        AND layout_type = ?
-      LIMIT 1
-    `).get(
-      blob.blob_hash,
-      bestLayout.width,
-      bestLayout.height,
-      bestLayout.layoutType
-    ) as { storage_path: string; width: number; height: number; layout_type: string } | undefined;
+    const variantQuery = await db.collection(Collections.DEVICE_VARIANTS)
+      .where("blob_hash", "==", blob.blob_hash)
+      .where("width", "==", bestLayout.width)
+      .where("height", "==", bestLayout.height)
+      .where("layout_type", "==", bestLayout.layoutType)
+      .limit(1)
+      .get();
 
-    if (!variant) {
+    if (variantQuery.empty) {
       console.warn(`No variant found for blob ${blob.blob_hash} with layout ${bestLayout.layoutType}`);
       continue;
     }
+
+    const variantData = variantQuery.docs[0].data();
+    const variant = {
+      storage_path: variantData.storage_path,
+      width: variantData.width,
+      height: variantData.height,
+      layout_type: variantData.layout_type,
+    };
 
     // Parse color palette
     const colorPalette: ColorPalette = blob.color_palette 
@@ -290,114 +289,44 @@ export function generateSlideshowQueue(
 /**
  * Legacy queue generation for devices without layouts defined
  */
-function generateLegacyQueue(
+async function generateLegacyQueue(
   deviceId: string,
   device: { width: number; height: number; orientation: string },
   queueSize: number
-): SlideshowQueue {
-  const db = getDb();
-
-  // Determine device size name
-  const deviceSizeName = determineDeviceSize(device.width, device.height, device.orientation);
-
-  // Get images from old processed_images table
-  const images = db.prepare(`
-    SELECT 
-      pi.image_id,
-      pi.file_path,
-      pi.color_palette
-    FROM processed_images pi
-    WHERE pi.device_size = ?
-    ORDER BY RANDOM()
-    LIMIT ?
-  `).all(deviceSizeName, queueSize) as Array<{
-    image_id: string;
-    file_path: string;
-    color_palette: string | null;
-  }>;
-
-  const queue: QueueItem[] = images.map((img) => {
-    const colorPalette: ColorPalette = img.color_palette
-      ? JSON.parse(img.color_palette)
-      : {
-          primary: "#000000",
-          secondary: "#000000",
-          tertiary: "#000000",
-          sourceColor: "#000000",
-          allColors: [],
-        };
-
-    return {
-      imageId: img.image_id,
-      blobHash: img.image_id, // Legacy: use image_id as hash
-      filePath: img.file_path,
-      colorPalette,
-      layoutType: "single",
-      variantDimensions: {
-        width: device.width,
-        height: device.height,
-      },
-    };
-  });
-
+): Promise<SlideshowQueue> {
+  // Legacy mode not supported in Firestore migration
+  // The old processed_images table is deprecated
+  console.warn(`Legacy queue generation not supported for device ${deviceId}`);
+  
   return {
     deviceId,
-    queue,
+    queue: [],
     currentIndex: 0,
     generatedAt: new Date().toISOString(),
   };
 }
 
 /**
- * Determine device size name from dimensions (legacy support)
- */
-function determineDeviceSize(
-  width: number,
-  height: number,
-  orientation: string
-): string {
-  if (orientation === "portrait") {
-    if (height >= 1000) return "medium-portrait";
-    return "small-portrait";
-  } else {
-    if (width >= 1800) return "large-landscape";
-    if (width >= 1000) return "medium-landscape";
-    return "small-landscape";
-  }
-}
-
-/**
  * Save queue state to database
  */
-export function saveQueueState(queue: SlideshowQueue): void {
-  const db = getDb();
-
-  db.prepare(`
-    INSERT INTO device_queue_state (device_id, queue_data, current_index, updated_at)
-    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    ON CONFLICT(device_id) DO UPDATE SET
-      queue_data = excluded.queue_data,
-      current_index = excluded.current_index,
-      updated_at = CURRENT_TIMESTAMP
-  `).run(queue.deviceId, JSON.stringify(queue), queue.currentIndex);
+export async function saveQueueState(queue: SlideshowQueue): Promise<void> {
+  await updateDeviceQueueState(
+    queue.deviceId,
+    JSON.stringify(queue),
+    queue.currentIndex
+  );
 }
 
 /**
  * Load queue state from database
  */
-export function loadQueueState(deviceId: string): SlideshowQueue | null {
-  const db = getDb();
+export async function loadQueueState(deviceId: string): Promise<SlideshowQueue | null> {
+  const state = await getDeviceQueueState(deviceId);
+  
+  if (!state) return null;
 
-  const result = db.prepare(`
-    SELECT queue_data, current_index
-    FROM device_queue_state
-    WHERE device_id = ?
-  `).get(deviceId) as { queue_data: string; current_index: number } | undefined;
-
-  if (!result) return null;
-
-  const queue = JSON.parse(result.queue_data) as SlideshowQueue;
-  queue.currentIndex = result.current_index;
+  const queue = JSON.parse(state.queue_data) as SlideshowQueue;
+  queue.currentIndex = state.current_index;
 
   return queue;
 }
@@ -405,27 +334,27 @@ export function loadQueueState(deviceId: string): SlideshowQueue | null {
 /**
  * Get next image in queue (with rotation)
  */
-export function getNextImage(deviceId: string): QueueItem | null {
-  let queue = loadQueueState(deviceId);
+export async function getNextImage(deviceId: string): Promise<QueueItem | null> {
+  let queue = await loadQueueState(deviceId);
 
   // Generate new queue if none exists
   if (!queue) {
-    queue = generateSlideshowQueue(deviceId);
-    saveQueueState(queue);
+    queue = await generateSlideshowQueue(deviceId);
+    await saveQueueState(queue);
   }
 
   // Check if we need to regenerate (reached end)
   if (queue.currentIndex >= queue.queue.length) {
-    queue = generateSlideshowQueue(deviceId);
+    queue = await generateSlideshowQueue(deviceId);
     queue.currentIndex = 0;
-    saveQueueState(queue);
+    await saveQueueState(queue);
   }
 
   const item = queue.queue[queue.currentIndex];
   
   // Update index for next call
   queue.currentIndex++;
-  saveQueueState(queue);
+  await saveQueueState(queue);
 
   return item;
 }

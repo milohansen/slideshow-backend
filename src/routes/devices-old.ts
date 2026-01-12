@@ -1,15 +1,7 @@
 import { Hono } from "hono";
-import { 
-  getDevice,
-  upsertDevice,
-  updateDeviceLastSeen,
-  deleteDevice,
-  getSource,
-  getBlob,
-  getDeviceVariant,
-} from "../db/helpers-firestore.ts";
+import { getDb } from "../db/schema.ts";
 import { generateSlideshowQueue, getNextImage, loadQueueState } from "../services/slideshow-queue.ts";
-import { isGCSEnabled, parseGCSUri, createReadStream } from "../services/storage.ts";
+import { isGCSEnabled, readFile, parseGCSUri, createReadStream } from "../services/storage.ts";
 
 const devices = new Hono();
 
@@ -27,27 +19,46 @@ devices.post("/register", async (c) => {
         error: "Missing required fields: id, name, width, height, orientation"
       }, 400);
     }
+
+    const db = getDb();
     
     // Upsert device
-    await upsertDevice({
+    db.prepare(`
+      INSERT INTO devices (id, name, width, height, orientation, capabilities, version, last_seen)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        width = excluded.width,
+        height = excluded.height,
+        orientation = excluded.orientation,
+        capabilities = excluded.capabilities,
+        version = excluded.version,
+        last_seen = CURRENT_TIMESTAMP
+    `).run(
       id,
       name,
       width,
       height,
       orientation,
-      capabilities: capabilities ? JSON.stringify(capabilities) : undefined,
-      version,
-      gap: 0,
-      created_at: new Date().toISOString(),
-      last_seen: new Date().toISOString(),
-    });
+      capabilities ? JSON.stringify(capabilities) : null,
+      version
+    );
 
     console.log(`📱 Device registered: ${name} (${width}x${height} ${orientation})`);
 
     // Check if variants exist for this dimension
-    // Note: This requires a query across all device_variants - could be expensive
-    // For now, we'll assume backfill is needed if device is new
-    const needsBackfill = false; // TODO: Implement proper check
+    const variantCount = db.prepare(`
+      SELECT COUNT(*) as count 
+      FROM device_variants 
+      WHERE width = ? AND height = ?
+    `).get(width, height) as { count: number };
+
+    const needsBackfill = variantCount.count === 0;
+
+    if (needsBackfill) {
+      console.log(`⚠️  No variants found for ${width}x${height}, backfill needed`);
+      // TODO: Trigger backfill job
+    }
 
     return c.json({
       success: true,
@@ -64,10 +75,13 @@ devices.post("/register", async (c) => {
 });
 
 // Get device info
-devices.get("/:deviceId", async (c) => {
+devices.get("/:deviceId", (c) => {
   const deviceId = c.req.param("deviceId");
+  const db = getDb();
   
-  const device = await getDevice(deviceId);
+  const device = db.prepare(
+    "SELECT * FROM devices WHERE id = ?"
+  ).get(deviceId);
   
   if (!device) {
     return c.json({ error: "Device not found" }, 404);
@@ -77,7 +91,7 @@ devices.get("/:deviceId", async (c) => {
 });
 
 // Get slideshow queue for device
-devices.get("/:deviceId/slideshow", async (c) => {
+devices.get("/:deviceId/slideshow", (c) => {
   const deviceId = c.req.param("deviceId");
   const regenerate = c.req.query("regenerate") === "true";
   
@@ -86,12 +100,12 @@ devices.get("/:deviceId/slideshow", async (c) => {
     
     if (regenerate) {
       // Generate fresh queue
-      queue = await generateSlideshowQueue(deviceId);
+      queue = generateSlideshowQueue(deviceId);
     } else {
       // Load existing or generate new
-      queue = await loadQueueState(deviceId);
+      queue = loadQueueState(deviceId);
       if (!queue) {
-        queue = await generateSlideshowQueue(deviceId);
+        queue = generateSlideshowQueue(deviceId);
       }
     }
     
@@ -102,11 +116,11 @@ devices.get("/:deviceId/slideshow", async (c) => {
 });
 
 // Get next image in slideshow
-devices.get("/:deviceId/next", async (c) => {
+devices.get("/:deviceId/next", (c) => {
   const deviceId = c.req.param("deviceId");
   
   try {
-    const item = await getNextImage(deviceId);
+    const item = getNextImage(deviceId);
     
     if (!item) {
       return c.json({ error: "No images available" }, 404);
@@ -124,8 +138,14 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
   const imageId = c.req.param("imageId");
   
   try {
+    const db = getDb();
+    
     // Get device info to determine size
-    const device = await getDevice(deviceId);
+    const device = db.prepare("SELECT * FROM devices WHERE id = ?").get(deviceId) as {
+      width: number;
+      height: number;
+      orientation: string;
+    } | undefined;
     
     if (!device) {
       return c.json({ error: "Device not found" }, 404);
@@ -135,16 +155,32 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
     let filePath: string | undefined;
     
     // First check if imageId is actually a source ID
-    const source = await getSource(imageId);
+    const source = db.prepare("SELECT blob_hash FROM sources WHERE id = ?").get(imageId) as { blob_hash: string } | undefined;
     const blobHash = source?.blob_hash;
     
     if (blobHash) {
       // Query device_variants by blob hash and device dimensions
-      const variant = await getDeviceVariant(blobHash, device.width, device.height);
+      const variant = db.prepare(`
+        SELECT storage_path 
+        FROM device_variants 
+        WHERE blob_hash = ? AND width = ? AND height = ?
+        LIMIT 1
+      `).get(blobHash, device.width, device.height) as { storage_path: string } | undefined;
+      
       filePath = variant?.storage_path;
     }
     
-    // TODO: Add fallback to legacy schema if needed
+    // Fallback to legacy schema
+    if (!filePath) {
+      const processed = db.prepare(`
+        SELECT file_path 
+        FROM processed_images 
+        WHERE image_id = ? 
+        LIMIT 1
+      `).get(imageId) as { file_path: string } | undefined;
+      
+      filePath = processed?.file_path;
+    }
     
     if (!filePath) {
       return c.json({ error: "Image not found" }, 404);
@@ -196,26 +232,36 @@ devices.get("/:deviceId/images/:imageId/metadata", async (c) => {
   const imageId = c.req.param("imageId");
   
   try {
+    const db = getDb();
+    
     // Get device info
-    const device = await getDevice(deviceId);
+    const device = db.prepare("SELECT * FROM devices WHERE id = ?").get(deviceId) as {
+      width: number;
+      height: number;
+      orientation: string;
+    } | undefined;
     
     if (!device) {
       return c.json({ error: "Device not found" }, 404);
     }
     
     // Get source and blob data
-    const source = await getSource(imageId);
+    const source = db.prepare("SELECT * FROM sources WHERE id = ?").get(imageId) as any;
     if (!source?.blob_hash) {
       return c.json({ error: "Image not found" }, 404);
     }
     
-    const blob = await getBlob(source.blob_hash);
+    const blob = db.prepare("SELECT * FROM blobs WHERE hash = ?").get(source.blob_hash) as any;
     if (!blob) {
       return c.json({ error: "Blob not found" }, 404);
     }
     
     // Get device variant
-    const variant = await getDeviceVariant(blob.hash, device.width, device.height);
+    const variant = db.prepare(`
+      SELECT storage_path 
+      FROM device_variants 
+      WHERE blob_hash = ? AND width = ? AND height = ?
+    `).get(blob.hash, device.width, device.height) as { storage_path: string } | undefined;
     
     if (!variant) {
       return c.json({ error: "Variant not found for device dimensions" }, 404);
@@ -263,16 +309,18 @@ devices.post("/", async (c) => {
     return c.json({ error: "Missing required fields" }, 400);
   }
   
-  await upsertDevice({
-    id,
-    name,
-    width,
-    height,
-    orientation,
-    gap: 0,
-    created_at: new Date().toISOString(),
-    last_seen: new Date().toISOString(),
-  });
+  const db = getDb();
+  
+  db.prepare(`
+    INSERT INTO devices (id, name, width, height, orientation, last_seen)
+    VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      width = excluded.width,
+      height = excluded.height,
+      orientation = excluded.orientation,
+      last_seen = CURRENT_TIMESTAMP
+  `).run(id, name, width, height, orientation);
   
   return c.json({ success: true, deviceId: id });
 });
@@ -287,34 +335,35 @@ devices.put("/:deviceId", async (c) => {
     return c.json({ error: "Missing required fields" }, 400);
   }
   
+  const db = getDb();
+  
   // Check if device exists
-  const existing = await getDevice(deviceId);
+  const existing = db.prepare("SELECT id FROM devices WHERE id = ?").get(deviceId);
   if (!existing) {
     return c.json({ error: "Device not found" }, 404);
   }
   
-  await upsertDevice({
-    ...existing,
-    name,
-    width,
-    height,
-    orientation,
-  });
+  db.prepare(`
+    UPDATE devices 
+    SET name = ?, width = ?, height = ?, orientation = ?
+    WHERE id = ?
+  `).run(name, width, height, orientation, deviceId);
   
   return c.json({ success: true, deviceId });
 });
 
 // Delete device
-devices.delete("/:deviceId", async (c) => {
+devices.delete("/:deviceId", (c) => {
   const deviceId = c.req.param("deviceId");
+  const db = getDb();
   
   // Check if device exists
-  const existing = await getDevice(deviceId);
+  const existing = db.prepare("SELECT id FROM devices WHERE id = ?").get(deviceId);
   if (!existing) {
     return c.json({ error: "Device not found" }, 404);
   }
   
-  await deleteDevice(deviceId);
+  db.prepare("DELETE FROM devices WHERE id = ?").run(deviceId);
   
   return c.json({ success: true });
 });

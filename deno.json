@@ -7,24 +7,29 @@
     "test:colors": "deno run --allow-read --allow-run tests/color-extraction-performance.ts"
   },
   "imports": {
-    "hono": "jsr:@hono/hono@^4.6.14",
-    "sqlite": "jsr:@db/sqlite@0.12",
-    "@google-cloud/storage": "npm:@google-cloud/storage@7.14.0",
-    "@google-cloud/run": "npm:@google-cloud/run@^0.3.0",
-    "@google-cloud/tasks": "npm:@google-cloud/tasks@5.5.0",
-    "@std/fs": "jsr:@std/fs@^1.0.8",
-    "@std/path": "jsr:@std/path@^1.0.8",
-    "@std/cli": "jsr:@std/cli@^1.0.9",
-    "@std/crypto": "jsr:@std/crypto@^1.0.3",
-    "@std/encoding": "jsr:@std/encoding@^1.0.5",
-    "arctic": "npm:arctic@^1.9.2",
+    "arctic": "npm:arctic@^3.7.0",
+    "hono": "jsr:@hono/hono@^4.11.3",
+    "sharp": "npm:sharp@^0.34.5",
+    "@google-cloud/firestore": "npm:@google-cloud/firestore@^8.1.0",
+    "@google-cloud/storage": "npm:@google-cloud/storage@7.18.0",
+    "@google-cloud/run": "npm:@google-cloud/run@^3.1.0",
+    "@google-cloud/tasks": "npm:@google-cloud/tasks@6.2.1",
     "@material/material-color-utilities": "npm:@material/material-color-utilities@^0.3.0",
-    "sharp": "npm:sharp@^0.33.5"
+    "@std/cli": "jsr:@std/cli@^1.0.25",
+    "@std/crypto": "jsr:@std/crypto@^1.0.5",
+    "@std/encoding": "jsr:@std/encoding@^1.0.10",
+    "@std/fs": "jsr:@std/fs@^1.0.21",
+    "@std/path": "jsr:@std/path@^1.1.4"
   },
+  "nodeModulesDir": "auto",
   "compilerOptions": {
     "jsx": "precompile",
     "jsxImportSource": "hono/jsx",
     "lib": ["deno.window", "deno.unstable", "deno.worker"]
   },
-  "unstable": ["worker-options"]
+  "unstable": ["worker-options"],
+  "allowScripts": {
+    "allow": ["npm:protobufjs@7.5.4", "npm:sharp@0.34.5"],
+    "deny": ["npm:protobufjs@7.2.4"]
+  }
 }

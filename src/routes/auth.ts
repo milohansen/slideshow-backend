@@ -67,19 +67,19 @@ auth.get("/google/callback", async (c) => {
     const tokens = await google.validateAuthorizationCode(code, codeVerifier);
 
     // Parse ID token to get user information
-    const userInfo = parseIdToken(tokens.idToken);
+    const userInfo = parseIdToken(tokens.idToken());
 
     // Calculate expires_in from accessTokenExpiresAt
-    const expiresIn = Math.floor((tokens.accessTokenExpiresAt.getTime() - Date.now()) / 1000);
+    const expiresIn = Math.floor((tokens.accessTokenExpiresAt().getTime() - Date.now()) / 1000);
 
     // Store session in database
-    const sessionId = storeSession(
+    const sessionId = await storeSession(
       userInfo.sub, // Google user ID
       userInfo.email || null,
       userInfo.name || null,
       userInfo.picture || null,
-      tokens.accessToken,
-      tokens.refreshToken || null,
+      tokens.accessToken(),
+      tokens.refreshToken() || null,
       expiresIn
     );
 
@@ -110,11 +110,11 @@ auth.get("/google/callback", async (c) => {
  * GET /auth/logout
  * Logs out the user and clears session
  */
-auth.get("/logout", (c) => {
+auth.get("/logout", async (c) => {
   const sessionId = getCookie(c, "session_id");
 
   if (sessionId) {
-    deleteSession(sessionId);
+    await deleteSession(sessionId);
   }
 
   // Clear session cookie

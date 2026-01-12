@@ -4,7 +4,7 @@
  */
 
 import { JobsClient } from "@google-cloud/run";
-import { getSourcesByStatus } from "../db/helpers.ts";
+import { getSourcesByStatus } from "../db/helpers-firestore.ts";
 
 interface JobQueueConfig {
   projectId: string;
@@ -23,7 +23,7 @@ export interface ProcessingBatch {
 class BatchJobQueue {
   private config: JobQueueConfig;
   private pendingSourceIds: Set<string> = new Set();
-  private flushTimer: number | null = null;
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly BATCH_SIZE = 50;
   private readonly FLUSH_DELAY_MS = 30000; // 30 seconds
 
@@ -160,7 +160,7 @@ class BatchJobQueue {
    * Used for manual/admin-triggered batch processing
    */
   async processAllStaged(): Promise<void> {
-    const stagedSources = getSourcesByStatus("staged", 1000);
+    const stagedSources = await getSourcesByStatus("staged", 1000);
     
     if (stagedSources.length === 0) {
       console.log("[BatchQueue] No staged sources to process");

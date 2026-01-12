@@ -6,9 +6,9 @@
 
 import { crypto } from "@std/crypto";
 import { encodeHex } from "@std/encoding/hex";
-import { join } from "@std/path";
 import { ensureDir } from "@std/fs";
-import { createSource, type Source } from "../db/helpers.ts";
+import { join } from "@std/path";
+import { createSource } from "../db/helpers-firestore.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
 
 export interface StagedImageInput {
@@ -41,21 +41,21 @@ async function calculateFileHash(filePath: string): Promise<string> {
  */
 export async function stageImageForProcessing(input: StagedImageInput): Promise<IngestionResult> {
   const sourceId = crypto.randomUUID();
-  
+
   try {
     // Calculate hash for optional duplicate detection
     // Note: Full duplicate detection happens in processor after download
     const fileHash = await calculateFileHash(input.localPath);
-    
+
     // Upload to staging bucket
     let stagingPath: string;
-    
+
     if (isGCSEnabled()) {
       const ext = input.localPath.substring(input.localPath.lastIndexOf("."));
       const gcsPath = `staging/${sourceId}${ext}`;
       stagingPath = await uploadFile(input.localPath, gcsPath, "image/jpeg");
       console.log(`  Uploaded to staging: ${stagingPath}`);
-      
+
       // Clean up local file after successful upload
       try {
         await Deno.remove(input.localPath);
@@ -70,9 +70,9 @@ export async function stageImageForProcessing(input: StagedImageInput): Promise<
       stagingPath = join(stagingDir, `${sourceId}${ext}`);
       await Deno.rename(input.localPath, stagingPath);
     }
-    
+
     // Create source record with STAGED status
-    createSource({
+    await createSource({
       id: sourceId,
       user_id: input.userId,
       blob_hash: undefined, // Will be set by processor
@@ -82,9 +82,9 @@ export async function stageImageForProcessing(input: StagedImageInput): Promise<
       status_message: "Awaiting processing",
       staging_path: stagingPath,
     });
-    
+
     console.log(`  ✓ Staged source ${sourceId} for processing`);
-    
+
     return {
       sourceId,
       status: "staged",
@@ -101,7 +101,7 @@ export async function stageImageForProcessing(input: StagedImageInput): Promise<
  */
 export async function stageBatch(inputs: StagedImageInput[]): Promise<IngestionResult[]> {
   const results: IngestionResult[] = [];
-  
+
   for (const input of inputs) {
     try {
       const result = await stageImageForProcessing(input);
@@ -119,7 +119,7 @@ export async function stageBatch(inputs: StagedImageInput[]): Promise<IngestionR
       });
     }
   }
-  
+
   return results;
 }
 
@@ -127,14 +127,9 @@ export async function stageBatch(inputs: StagedImageInput[]): Promise<IngestionR
  * Create a staged source record for a file already in GCS staging
  * Used when clients upload directly to GCS via signed URLs
  */
-export function createStagedSourceFromGCS(params: {
-  gcsPath: string;
-  origin: "upload" | "url";
-  userId?: string;
-  externalId?: string;
-}): string {
+export function createStagedSourceFromGCS(params: { gcsPath: string; origin: "upload" | "url"; userId?: string; externalId?: string }): string {
   const sourceId = crypto.randomUUID();
-  
+
   createSource({
     id: sourceId,
     user_id: params.userId,
@@ -145,7 +140,7 @@ export function createStagedSourceFromGCS(params: {
     status_message: "Awaiting processing",
     staging_path: params.gcsPath,
   });
-  
+
   return sourceId;
 }
 
@@ -164,19 +159,19 @@ export async function cleanupStagingFiles(daysOld: number = 7): Promise<number> 
     console.log("GCS staging cleanup not yet implemented");
     return 0;
   }
-  
+
   const stagingDir = getStagingDirectory();
   let cleaned = 0;
-  
+
   try {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-    
+
     for await (const entry of Deno.readDir(stagingDir)) {
       if (entry.isFile) {
         const filePath = join(stagingDir, entry.name);
         const stat = await Deno.stat(filePath);
-        
+
         if (stat.mtime && stat.mtime < cutoffDate) {
           await Deno.remove(filePath);
           cleaned++;
@@ -186,6 +181,6 @@ export async function cleanupStagingFiles(daysOld: number = 7): Promise<number> 
   } catch (error) {
     console.error("Error cleaning staging files:", error);
   }
-  
+
   return cleaned;
 }

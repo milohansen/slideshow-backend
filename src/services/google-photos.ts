@@ -1,16 +1,8 @@
-import { getDb } from "../db/schema.ts";
+import { getFirestore, Collections } from "../db/firestore.ts";
+import { createPickerSession as createPickerSessionInDb, getPickerSession, updatePickerSession, deleteExpiredPickerSessions } from "../db/helpers-firestore.ts";
+import type { PickerSession } from "../db/types.ts";
 
 const PICKER_API_BASE = "https://photospicker.googleapis.com/v1";
-
-export type PickerSession = {
-  id: string;
-  user_id: string;
-  picker_session_id: string;
-  picker_uri: string;
-  media_items_set: boolean;
-  polling_config: string | null;
-  created_at: string;
-}
 
 type PhotoMetadata = {
   focalLength?: number;
@@ -55,7 +47,7 @@ export async function createPickerSession(
   userId: string
 ): Promise<PickerSession> {
   // Clean up expired sessions first
-  cleanupExpiredSessions();
+  await cleanupExpiredSessions();
   
   const response = await fetch(`${PICKER_API_BASE}/sessions`, {
     method: "POST",
@@ -74,28 +66,25 @@ export async function createPickerSession(
   const data = await response.json();
 
   // Store session in database
-  const db = getDb();
   const pollingConfig = data.pollingConfig ? JSON.stringify(data.pollingConfig) : null;
   
   // Append /autoclose to pickerUri to automatically close after selection
   const pickerUri = data.pickerUri + '/autoclose';
 
-  const result = db.prepare(`
-    INSERT INTO picker_sessions (user_id, picker_session_id, picker_uri, media_items_set, polling_config, expire_time)
-    VALUES (?, ?, ?, ?, ?, ?)
-    RETURNING *
-  `).get(
-    userId,
-    data.id,
-    pickerUri,
-    false,
-    pollingConfig,
-    data.expireTime || null
-  ) as PickerSession;
+  const sessionId = await createPickerSessionInDb({
+    user_id: userId,
+    picker_session_id: data.id,
+    picker_uri: pickerUri,
+    media_items_set: false,
+    polling_config: pollingConfig ?? undefined,
+    expire_time: data.expireTime || null,
+  });
+  
+  const result = await getPickerSession(sessionId);
 
   console.log(`✅ Created picker session: ${data.id}`);
 
-  return result;
+  return result!;
 }
 
 /**
@@ -131,28 +120,21 @@ export async function getPickerSessionStatus(
 }
 
 /**
- * Update local picker session status
+ * Get picker session from database by picker_session_id
  */
-export function updatePickerSession(
-  sessionId: string,
-  mediaItemsSet: boolean
-): void {
-  const db = getDb();
-  db.prepare(`
-    UPDATE picker_sessions
-    SET media_items_set = ?
-    WHERE picker_session_id = ?
-  `).run(mediaItemsSet, sessionId);
-}
-
-/**
- * Get picker session from database
- */
-export function getPickerSessionFromDb(sessionId: string): PickerSession | null {
-  const db = getDb();
-  return db.prepare(`
-    SELECT * FROM picker_sessions WHERE picker_session_id = ?
-  `).get(sessionId) as PickerSession | undefined || null;
+export async function getPickerSessionFromDb(sessionId: string): Promise<PickerSession | null> {
+  // Need to query by picker_session_id, not document ID
+  const db = getFirestore();
+  const snapshot = await db.collection(Collections.PICKER_SESSIONS)
+    .where("picker_session_id", "==", sessionId)
+    .limit(1)
+    .get();
+  
+  if (snapshot.empty) {
+    return null;
+  }
+  
+  return snapshot.docs[0].data() as PickerSession;
 }
 
 /**
@@ -222,40 +204,25 @@ export async function getAllMediaItems(
 
 /**
  * Delete a specific picker session from the database
+ * @param pickerSessionId - The picker_session_id field (not document ID)
  */
-export function deletePickerSession(pickerSessionId: string): boolean {
-  const db = getDb();
-  
-  const changes = db.prepare(`
-    DELETE FROM picker_sessions 
-    WHERE picker_session_id = ?
-  `).run(pickerSessionId);
-  
-  if (changes > 0) {
-    console.log(`🗑️  Deleted picker session: ${pickerSessionId}`);
-    return true;
+export async function deletePickerSession(pickerSessionId: string): Promise<boolean> {
+  const session = await getPickerSessionFromDb(pickerSessionId);
+  if (!session) {
+    return false;
   }
   
-  return false;
+  const db = getFirestore();
+  await db.collection(Collections.PICKER_SESSIONS).doc(session.id).delete();
+  console.log(`🗑️  Deleted picker session: ${pickerSessionId}`);
+  return true;
 }
 
 /**
  * Clean up expired picker sessions based on their actual expireTime
  */
-export function cleanupExpiredSessions(): number {
-  const db = getDb();
-  const now = new Date().toISOString();
-  
-  const changes = db.prepare(`
-    DELETE FROM picker_sessions 
-    WHERE expire_time IS NOT NULL AND expire_time < ?
-  `).run(now);
-  
-  if (changes > 0) {
-    console.log(`🧹 Cleaned up ${changes} expired picker sessions`);
-  }
-  
-  return changes;
+export async function cleanupExpiredSessions(): Promise<void> {
+  await deleteExpiredPickerSessions();
 }
 
 /**

@@ -1,9 +1,10 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-ffi
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-ffi --allow-net
 /**
  * Clean up placeholder/test devices from database
  */
 
-import { initDatabase, getDb } from "./db/schema.ts";
+import { initFirestore } from "./db/firestore.ts";
+import { getAllDevices, deleteDevice } from "./db/helpers-firestore.ts";
 
 const VALID_DEVICE_IDS = [
   "kitchen-display",
@@ -12,11 +13,10 @@ const VALID_DEVICE_IDS = [
 ];
 
 async function cleanupDevices() {
-  await initDatabase();
-  const db = getDb();
+  await initFirestore();
 
   console.log("Current devices in database:");
-  const allDevices = db.prepare("SELECT id, name FROM devices").all() as Array<{ id: string; name: string }>;
+  const allDevices = await getAllDevices();
   allDevices.forEach(d => console.log(`  - ${d.id}: ${d.name}`));
 
   const toDelete = allDevices.filter(d => !VALID_DEVICE_IDS.includes(d.id));
@@ -29,11 +29,13 @@ async function cleanupDevices() {
   console.log("\nRemoving placeholder devices:");
   toDelete.forEach(d => console.log(`  - ${d.id}: ${d.name}`));
 
-  db.prepare(`DELETE FROM devices WHERE id NOT IN (${VALID_DEVICE_IDS.map(() => '?').join(', ')})`).run(...VALID_DEVICE_IDS);
+  for (const device of toDelete) {
+    await deleteDevice(device.id);
+  }
 
   console.log("\n✅ Cleanup complete");
   console.log("\nRemaining devices:");
-  const remaining = db.prepare("SELECT id, name FROM devices").all() as Array<{ id: string; name: string }>;
+  const remaining = await getAllDevices();
   remaining.forEach(d => console.log(`  - ${d.id}: ${d.name}`));
 }
 

@@ -1,33 +1,55 @@
-#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-ffi
+#!/usr/bin/env -S deno run --allow-read --allow-write --allow-env --allow-ffi --allow-net
 /**
- * Clean up all images and processed images from database
+ * Clean up all sources, blobs, and device variants from database
  */
 
-import { initDatabase, getDb } from "./db/schema.ts";
+import { initFirestore, getFirestore, Collections } from "./db/firestore.ts";
 
 async function cleanupImages() {
-  await initDatabase();
-  const db = getDb();
+  await initFirestore();
+  const db = getFirestore();
 
   console.log("Current state:");
-  const imageCount = db.prepare("SELECT COUNT(*) as count FROM images").get() as { count: number };
-  const processedCount = db.prepare("SELECT COUNT(*) as count FROM processed_images").get() as { count: number };
-  console.log(`  - Images: ${imageCount.count}`);
-  console.log(`  - Processed variants: ${processedCount.count}`);
+  const sourcesSnapshot = await db.collection(Collections.SOURCES).count().get();
+  const blobsSnapshot = await db.collection(Collections.BLOBS).count().get();
+  const variantsSnapshot = await db.collection(Collections.DEVICE_VARIANTS).count().get();
+  
+  const sourceCount = sourcesSnapshot.data().count;
+  const blobCount = blobsSnapshot.data().count;
+  const variantCount = variantsSnapshot.data().count;
+  
+  console.log(`  - Sources: ${sourceCount}`);
+  console.log(`  - Blobs: ${blobCount}`);
+  console.log(`  - Device variants: ${variantCount}`);
 
-  if (imageCount.count === 0 && processedCount.count === 0) {
+  if (sourceCount === 0 && blobCount === 0 && variantCount === 0) {
     console.log("\n✅ Database is already clean");
     return;
   }
 
   console.log("\nCleaning up...");
-  db.prepare("DELETE FROM processed_images").run();
-  db.prepare("DELETE FROM images").run();
-  db.prepare("DELETE FROM device_queue_state").run();
+  
+  // Delete all documents in each collection
+  const deleteBatch = db.batch();
+  
+  const sources = await db.collection(Collections.SOURCES).get();
+  sources.docs.forEach(doc => deleteBatch.delete(doc.ref));
+  
+  const blobs = await db.collection(Collections.BLOBS).get();
+  blobs.docs.forEach(doc => deleteBatch.delete(doc.ref));
+  
+  const variants = await db.collection(Collections.DEVICE_VARIANTS).get();
+  variants.docs.forEach(doc => deleteBatch.delete(doc.ref));
+  
+  const queueStates = await db.collection(Collections.DEVICE_QUEUE_STATE).get();
+  queueStates.docs.forEach(doc => deleteBatch.delete(doc.ref));
+  
+  await deleteBatch.commit();
 
   console.log("\n✅ Cleanup complete");
-  console.log("  - All images removed");
-  console.log("  - All processed variants removed");
+  console.log("  - All sources removed");
+  console.log("  - All blobs removed");
+  console.log("  - All device variants removed");
   console.log("  - All queue states cleared");
 }
 

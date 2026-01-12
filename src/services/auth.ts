@@ -1,5 +1,5 @@
 import { Google } from "arctic";
-import { getDb } from "../db/schema.ts";
+import { getAuthSession, upsertAuthSession, getAuthSessionByUserId, deleteAuthSession } from "../db/helpers-firestore.ts";
 import { encodeHex } from "@std/encoding/hex";
 
 // Initialize Google OAuth provider with Arctic
@@ -24,7 +24,7 @@ export type UserSession = {
 /**
  * Store or update OAuth session for a user
  */
-export function storeSession(
+export async function storeSession(
   userId: string,
   email: string | null,
   name: string | null,
@@ -32,78 +32,71 @@ export function storeSession(
   accessToken: string,
   refreshToken: string | null,
   expiresIn: number
-): string {
-  const db = getDb();
+): Promise<string> {
   const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
   
   // Encrypt tokens before storing (simple encryption with crypto)
   const encryptedAccessToken = encryptToken(accessToken);
   const encryptedRefreshToken = refreshToken ? encryptToken(refreshToken) : null;
   
-  // Insert or update session
-  const result = db.prepare(`
-    INSERT INTO auth_sessions (user_id, email, name, picture, access_token, refresh_token, token_expiry)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      email = excluded.email,
-      name = excluded.name,
-      picture = excluded.picture,
-      access_token = excluded.access_token,
-      refresh_token = excluded.refresh_token,
-      token_expiry = excluded.token_expiry,
-      created_at = CURRENT_TIMESTAMP
-    RETURNING id
-  `).get(userId, email, name, picture, encryptedAccessToken, encryptedRefreshToken, tokenExpiry) as { id: string };
+  const sessionId = crypto.randomUUID();
   
-  return result.id;
+  // Upsert session
+  await upsertAuthSession({
+    id: sessionId,
+    user_id: userId,
+    email: email ?? undefined,
+    name: name ?? undefined,
+    picture: picture ?? undefined,
+    access_token: encryptedAccessToken,
+    refresh_token: encryptedRefreshToken ?? undefined,
+    token_expiry: tokenExpiry,
+  });
+  
+  return sessionId;
 }
 
 /**
  * Get session by session ID
  */
-export function getSessionById(sessionId: string): UserSession | null {
-  const db = getDb();
-  const session = db.prepare(`
-    SELECT * FROM auth_sessions WHERE id = ?
-  `).get(sessionId) as UserSession | undefined;
+export async function getSessionById(sessionId: string): Promise<UserSession | null> {
+  const session = await getAuthSession(sessionId);
   
   if (!session) return null;
   
   // Decrypt tokens
-  session.access_token = decryptToken(session.access_token);
-  if (session.refresh_token) {
-    session.refresh_token = decryptToken(session.refresh_token);
-  }
+  const decryptedSession = {
+    ...session,
+    access_token: decryptToken(session.access_token),
+    refresh_token: session.refresh_token ? decryptToken(session.refresh_token) : null,
+  };
   
-  return session;
+  return decryptedSession as UserSession;
 }
 
 /**
  * Get session by user ID
  */
-export function getSessionByUserId(userId: string): UserSession | null {
-  const db = getDb();
-  const session = db.prepare(`
-    SELECT * FROM auth_sessions WHERE user_id = ?
-  `).get(userId) as UserSession | undefined;
+export async function getSessionByUserId(userId: string): Promise<UserSession | null> {
+  const session = await getAuthSessionByUserId(userId);
   
   if (!session) return null;
   
   // Decrypt tokens
-  session.access_token = decryptToken(session.access_token);
-  if (session.refresh_token) {
-    session.refresh_token = decryptToken(session.refresh_token);
-  }
+  const decryptedSession = {
+    ...session,
+    access_token: decryptToken(session.access_token),
+    refresh_token: session.refresh_token ? decryptToken(session.refresh_token) : null,
+  };
   
-  return session;
+  return decryptedSession as UserSession;
 }
 
 /**
  * Delete session by ID
  */
-export function deleteSession(sessionId: string): void {
-  const db = getDb();
-  db.prepare("DELETE FROM auth_sessions WHERE id = ?").run(sessionId);
+export async function deleteSession(sessionId: string): Promise<void> {
+  await deleteAuthSession(sessionId);
 }
 
 /**
@@ -149,25 +142,29 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
 /**
  * Update session with refreshed tokens
  */
-export function updateSessionTokens(
+export async function updateSessionTokens(
   sessionId: string,
   accessToken: string,
   refreshToken: string | null,
   expiresIn: number
-): void {
-  const db = getDb();
+): Promise<void> {
   const tokenExpiry = new Date(Date.now() + expiresIn * 1000).toISOString();
   
   const encryptedAccessToken = encryptToken(accessToken);
-  const encryptedRefreshToken = refreshToken ? encryptToken(refreshToken) : null;
+  const encryptedRefreshToken = refreshToken ? encryptToken(refreshToken) : undefined;
   
-  db.prepare(`
-    UPDATE auth_sessions 
-    SET access_token = ?, 
-        refresh_token = COALESCE(?, refresh_token),
-        token_expiry = ?
-    WHERE id = ?
-  `).run(encryptedAccessToken, encryptedRefreshToken, tokenExpiry, sessionId);
+  // Get existing session and update it
+  const session = await getAuthSession(sessionId);
+  if (!session) {
+    throw new Error(`Session not found: ${sessionId}`);
+  }
+  
+  await upsertAuthSession({
+    ...session,
+    access_token: encryptedAccessToken,
+    refresh_token: encryptedRefreshToken || session.refresh_token,
+    token_expiry: tokenExpiry,
+  });
 }
 
 /**

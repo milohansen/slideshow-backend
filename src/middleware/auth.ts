@@ -24,7 +24,7 @@ export async function requireAuth(c: Context, next: Next) {
     return c.redirect("/auth/google");
   }
 
-  const session = getSessionById(sessionId);
+  const session = await getSessionById(sessionId);
 
   if (!session) {
     console.log("🔒 Invalid session - " + (isApiRoute ? "returning 401" : "redirecting to login"));
@@ -42,7 +42,7 @@ export async function requireAuth(c: Context, next: Next) {
         const refreshed = await refreshAccessToken(session.refresh_token);
 
         // Update session with new tokens
-        updateSessionTokens(
+        await updateSessionTokens(
           session.id,
           refreshed.accessToken,
           refreshed.refreshToken || null,
@@ -88,7 +88,7 @@ export async function optionalAuth(c: Context, next: Next) {
   const sessionId = getCookie(c, "session_id");
 
   if (sessionId) {
-    const session = getSessionById(sessionId);
+    const session = await getSessionById(sessionId);
 
     if (session && !isTokenExpired(session)) {
       c.set("session", session);
