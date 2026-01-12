@@ -121,6 +121,7 @@ export async function initDatabase() {
       height INTEGER NOT NULL,
       orientation TEXT NOT NULL CHECK(orientation IN ('portrait', 'landscape')),
       layouts TEXT,
+      gap INTEGER DEFAULT 0,
       capabilities TEXT,
       version TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -368,6 +369,20 @@ function runMigrations(db: Database): void {
   } catch (error) {
     console.error("❌ Migration failed:", error);
   }
+
+  // Migration 11: Add gap column to devices table
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(devices)").all() as Array<{ name: string }>;
+    const hasGap = tableInfo.some(col => col.name === "gap");
+    
+    if (!hasGap) {
+      console.log("🔄 Running migration: Adding gap column to devices table");
+      db.exec("ALTER TABLE devices ADD COLUMN gap INTEGER DEFAULT 0");
+      console.log("✅ Migration completed: gap column added");
+    }
+  } catch (error) {
+    console.error("❌ Migration failed:", error);
+  }
 }
 
 /**
@@ -386,23 +401,11 @@ function initializeDefaultDevices(db: Database): void {
         width: 1024,
         height: 600,
         orientation: "landscape",
-        layouts: JSON.stringify([
-          {
-            type: "single",
-            width: 1024,
-            height: 600,
-            preferredAspectRatios: ["landscape", "square"], // Images wider than tall
-            minAspectRatio: 1.0, // 1:1 and above
-          },
-          {
-            type: "pair-vertical",
-            width: 508, // (1024 - 4 * 2) / 2
-            height: 600,
-            divider: 4,
-            preferredAspectRatios: ["portrait"], // Images taller than wide
-            maxAspectRatio: 1.0, // Less than 1:1
-          },
-        ]),
+        layouts: JSON.stringify({
+          monotych: true,
+          diptych: true,
+        }),
+        gap: 8, // 4px on each side
       },
       {
         id: "bedroom-clock",
@@ -410,25 +413,20 @@ function initializeDefaultDevices(db: Database): void {
         width: 300,
         height: 400,
         orientation: "portrait",
-        layouts: JSON.stringify([
-          {
-            type: "single",
-            width: 300,
-            height: 400,
-            preferredAspectRatios: ["portrait", "square"],
-            maxAspectRatio: 1.0,
-          },
-        ]),
+        layouts: JSON.stringify({
+          monotych: true,
+        }),
+        gap: 0,
       },
     ];
     
     const stmt = db.prepare(`
-      INSERT INTO devices (id, name, width, height, orientation, layouts, last_seen)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO devices (id, name, width, height, orientation, layouts, gap, last_seen)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `);
     
     for (const device of defaultDevices) {
-      stmt.run(device.id, device.name, device.width, device.height, device.orientation, device.layouts);
+      stmt.run(device.id, device.name, device.width, device.height, device.orientation, device.layouts, device.gap);
       console.log(`  ✓ ${device.name} (${device.width}x${device.height} ${device.orientation})`);
     }
     

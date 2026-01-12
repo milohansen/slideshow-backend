@@ -448,10 +448,16 @@ app.get("/device-dimensions", (c) => {
     const db = getDb();
     
     const devices = db.prepare(`
-      SELECT width, height, orientation, layouts 
+      SELECT width, height, orientation, layouts, gap 
       FROM devices 
       ORDER BY width DESC, height DESC
-    `).all() as Array<{ width: number; height: number; orientation: string; layouts: string | null }>;
+    `).all() as Array<{ 
+      width: number; 
+      height: number; 
+      orientation: string; 
+      layouts: string | null;
+      gap: number | null;
+    }>;
 
     // Parse layouts JSON for each device
     const devicesWithLayouts = devices.map(device => ({
@@ -459,6 +465,7 @@ app.get("/device-dimensions", (c) => {
       height: device.height,
       orientation: device.orientation,
       layouts: device.layouts ? JSON.parse(device.layouts) : undefined,
+      gap: device.gap || 0,
     }));
 
     return c.json({ devices: devicesWithLayouts });
