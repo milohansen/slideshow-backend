@@ -1,12 +1,12 @@
-import { Context, Next } from "hono";
+import type { Context, Next } from "hono";
 import { getCookie } from "hono/cookie";
 import {
   getSessionById,
   isTokenExpired,
   refreshAccessToken,
   updateSessionTokens,
-  UserSession,
 } from "../services/auth.ts";
+import type { UserSession } from "../services/auth.ts";
 
 /**
  * Middleware to require authentication for protected routes

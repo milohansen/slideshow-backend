@@ -8,6 +8,8 @@ import { crypto } from "@std/crypto";
 import { encodeHex } from "@std/encoding/hex";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
+import { readFile } from "fs/promises";
+import { readdirSync, statSync, unlinkSync, renameSync } from "fs";
 import { createSource } from "../db/helpers-firestore.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
 
@@ -29,7 +31,7 @@ export interface IngestionResult {
  * Calculate SHA-256 hash of a file
  */
 async function calculateFileHash(filePath: string): Promise<string> {
-  const fileData = await Deno.readFile(filePath);
+  const fileData = await readFile(filePath);
   const hashBuffer = await crypto.subtle.digest("SHA-256", fileData);
   return encodeHex(new Uint8Array(hashBuffer));
 }
@@ -58,7 +60,7 @@ export async function stageImageForProcessing(input: StagedImageInput): Promise<
 
       // Clean up local file after successful upload
       try {
-        await Deno.remove(input.localPath);
+        unlinkSync(input.localPath);
       } catch {
         // Ignore cleanup errors
       }
@@ -68,7 +70,7 @@ export async function stageImageForProcessing(input: StagedImageInput): Promise<
       await ensureDir(stagingDir);
       const ext = input.localPath.substring(input.localPath.lastIndexOf("."));
       stagingPath = join(stagingDir, `${sourceId}${ext}`);
-      await Deno.rename(input.localPath, stagingPath);
+      renameSync(input.localPath, stagingPath);
     }
 
     // Create source record with STAGED status
@@ -167,13 +169,15 @@ export async function cleanupStagingFiles(daysOld: number = 7): Promise<number> 
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    for await (const entry of Deno.readDir(stagingDir)) {
-      if (entry.isFile) {
+    const entries = readdirSync(stagingDir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (entry.isFile()) {
         const filePath = join(stagingDir, entry.name);
-        const stat = await Deno.stat(filePath);
+        const stat = statSync(filePath);
 
         if (stat.mtime && stat.mtime < cutoffDate) {
-          await Deno.remove(filePath);
+          unlinkSync(filePath);
           cleaned++;
         }
       }
@@ -184,3 +188,59 @@ export async function cleanupStagingFiles(daysOld: number = 7): Promise<number> 
 
   return cleaned;
 }
+
+/**
+ * Ingest images from Google Photos
+ * Stages each image for processing
+ */
+export async function ingestFromGooglePhotos(
+  accessToken: string,
+  images: any[] // PickedMediaItem array from google-photos service
+): Promise<{ ingested: number; skipped: number; failed: number; details: Array<{ id: string; status: string; message?: string }> }> {
+  const results = {
+    ingested: 0,
+    skipped: 0,
+    failed: 0,
+    details: [] as Array<{ id: string; status: string; message?: string }>,
+  };
+
+  for (const image of images) {
+    try {
+      // For Google Photos, we'll stage the image with the external ID
+      // The actual download and processing happens in the processor service
+      const result = await stageImageForProcessing({
+        localPath: image.id, // Use Google Photos ID as identifier (will be resolved by processor)
+        origin: "google_photos",
+        externalId: image.id,
+        userId: undefined, // Set by upstream auth context
+      });
+
+      if (result.status === "staged") {
+        results.ingested++;
+        results.details.push({
+          id: image.id,
+          status: "ingested",
+          message: `Source ${result.sourceId} staged for processing`,
+        });
+      } else {
+        results.skipped++;
+        results.details.push({
+          id: image.id,
+          status: "skipped",
+          message: result.message || "Image already exists (duplicate)",
+        });
+      }
+    } catch (error) {
+      results.failed++;
+      results.details.push({
+        id: image.id,
+        status: "failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      console.error(`Failed to ingest Google Photos image ${image.id}:`, error);
+    }
+  }
+
+  return results;
+}
+

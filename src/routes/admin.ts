@@ -1,4 +1,7 @@
 import { Hono } from "hono";
+import { mkdtempSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware/auth.ts";
 import photosRoutes from "./photos.ts";
 import { getFirestore, Collections } from "../db/firestore.ts";
@@ -11,6 +14,8 @@ import {
   getSource,
 } from "../db/helpers-firestore.ts";
 import { deleteFile } from "../services/storage.ts";
+import { stageImageForProcessing } from "../services/image-ingestion-v2.ts";
+import { queueSourceProcessing } from "../services/job-queue-v2.ts";
 
 const admin = new Hono();
 
@@ -60,20 +65,17 @@ admin.post("/upload", async (c) => {
   
   console.log(`[Admin] Processing ${files.length} uploaded files`);
   
-  // Write files to temporary directory and stage them
-  const { stageImageForProcessing } = await import("../services/image-ingestion-v2.ts");
-  const { queueSourceProcessing } = await import("../services/job-queue-v2.ts");
-  
   const results = await Promise.all(
     files.map(async (file) => {
       try {
         // Write to temporary file
-        const tempDir = await Deno.makeTempDir();
+
+        const tempDir = mkdtempSync(`${tmpdir()}/slideshow-`);
         const ext = file.name.substring(file.name.lastIndexOf("."));
         const tempPath = `${tempDir}/${crypto.randomUUID()}${ext}`;
         
         const arrayBuffer = await file.arrayBuffer();
-        await Deno.writeFile(tempPath, new Uint8Array(arrayBuffer));
+        writeFileSync(tempPath, new Uint8Array(arrayBuffer));
         
         // Stage for processing
         const result = await stageImageForProcessing({

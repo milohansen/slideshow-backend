@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { createReadStream as fsCreateReadStream } from "fs";
 import { 
   getDevice,
   upsertDevice,
@@ -172,9 +173,9 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
       });
     } else {
       // Stream from local filesystem
-      const file = await Deno.open(filePath, { read: true });
+      const file = fsCreateReadStream(filePath);
       
-      return new Response(file.readable, {
+      return new Response(file as any, {
         headers: {
           "Content-Type": "image/jpeg",
           "Cache-Control": "public, max-age=31536000",

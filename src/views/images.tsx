@@ -20,11 +20,17 @@ interface ImageData {
 
 interface ImagesProps {
   images: ImageData[];
+  error?: string;
 }
 
-export const Images: FC<ImagesProps> = ({ images }) => {
+export const Images: FC<ImagesProps> = ({ images, error }) => {
   return (
     <Layout title="Images">
+      {error && (
+        <div style="background-color: #fee; border: 1px solid #f88; border-radius: 4px; padding: 1rem; margin-bottom: 1rem; color: #c33;">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
         <h1 style="margin-bottom: 0;">Ingested Images</h1>
         <button 

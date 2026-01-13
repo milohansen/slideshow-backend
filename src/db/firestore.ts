@@ -1,4 +1,5 @@
 import { Firestore } from "@google-cloud/firestore";
+import { statSync } from "node:fs";
 
 let db: Firestore;
 
@@ -19,7 +20,7 @@ export function getFirestore(): Firestore {
 export async function initFirestore(): Promise<void> {
   try {
     // Support both GCP_PROJECT and GCP_PROJECT_ID for flexibility
-    const projectId = Deno.env.get("GCP_PROJECT") || Deno.env.get("GCP_PROJECT_ID");
+    const projectId = process.env.GCP_PROJECT || process.env.GCP_PROJECT_ID;
     
     if (!projectId) {
       throw new Error("Missing GCP_PROJECT or GCP_PROJECT_ID environment variable");
@@ -31,33 +32,31 @@ export async function initFirestore(): Promise<void> {
     };
 
     // Check if using Firestore emulator
-    // const emulatorHost = Deno.env.get("FIRESTORE_EMULATOR_HOST");
-    // if (emulatorHost) {
-    //   firestoreConfig.host = emulatorHost;
-    //   firestoreConfig.ssl = false;
-    //   console.log(`🧪 Using Firestore emulator: ${emulatorHost}`);
-    // } else {
-    //   // For local development, use service account credentials if available
-    //   const credentialsPath = Deno.env.get("GOOGLE_APPLICATION_CREDENTIALS");
-    //   if (credentialsPath) {
-    //     try {
-    //       const credentialsExists = await Deno.stat(credentialsPath).catch(() => null);
-    //       if (credentialsExists) {
-    //         firestoreConfig.keyFilename = credentialsPath;
-    //         console.log(`📄 Using service account credentials: ${credentialsPath}`);
-    //       }
-    //     } catch (error) {
-    //       console.warn(`⚠️  Could not access credentials file: ${credentialsPath}`);
-    //     }
-    //   } else {
-    //     console.log("🔐 Using Application Default Credentials");
-    //   }
-    // }
+    const emulatorHost = process.env.FIRESTORE_EMULATOR_HOST;
+    if (emulatorHost) {
+      firestoreConfig.host = emulatorHost;
+      firestoreConfig.ssl = false;
+      console.log(`🧪 Using Firestore emulator: ${emulatorHost}`);
+    } else {
+      // For local development, use service account credentials if available
+      const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+      if (credentialsPath) {
+        try {
+          statSync(credentialsPath);
+          firestoreConfig.keyFilename = credentialsPath;
+          console.log(`📄 Using service account credentials: ${credentialsPath}`);
+        } catch (error) {
+          console.warn(`⚠️  Could not access credentials file: ${credentialsPath}`);
+        }
+      } else {
+        console.log("🔐 Using Application Default Credentials");
+      }
+    }
 
     db = new Firestore(firestoreConfig);
 
     // Test the connection with timeout (skip for emulator as it might not be running yet)
-    // if (!emulatorHost) {
+    if (!emulatorHost) {
       try {
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error("Connection test timeout")), 3000) // Reduced timeout
@@ -69,7 +68,7 @@ export async function initFirestore(): Promise<void> {
         console.warn("⚠️  Firestore connection test failed (but continuing):", error instanceof Error ? error.message : error);
         // Don't throw error, just log it - the app can still function with delayed connections
       }
-    // }
+    }
     
     console.log(`✓ Firestore initialized (Project: ${projectId})`);
   } catch (error) {

@@ -4,9 +4,9 @@ import { encodeHex } from "@std/encoding/hex";
 
 // Initialize Google OAuth provider with Arctic
 export const google = new Google(
-  Deno.env.get("CLIENT_ID")!,
-  Deno.env.get("CLIENT_SECRET")!,
-  Deno.env.get("REDIRECT_URI") || "http://localhost:8080/auth/google/callback"
+  process.env.CLIENT_ID!,
+  process.env.CLIENT_SECRET!,
+  process.env.REDIRECT_URI || "http://localhost:8080/auth/google/callback"
 );
 
 export type UserSession = {
@@ -120,8 +120,8 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: Deno.env.get("CLIENT_ID")!,
-      client_secret: Deno.env.get("CLIENT_SECRET")!,
+      client_id: process.env.CLIENT_ID!,
+      client_secret: process.env.CLIENT_SECRET!,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
@@ -172,7 +172,7 @@ export async function updateSessionTokens(
  * In production, consider using a proper encryption library with key management
  */
 function encryptToken(token: string): string {
-  const key = Deno.env.get("ENCRYPTION_KEY") || "default-key-change-in-production";
+  const key = process.env.ENCRYPTION_KEY || "default-key-change-in-production";
   const encoder = new TextEncoder();
   const data = encoder.encode(token);
   const keyData = encoder.encode(key);
@@ -190,7 +190,7 @@ function encryptToken(token: string): string {
  * Simple decryption for tokens
  */
 function decryptToken(encryptedHex: string): string {
-  const key = Deno.env.get("ENCRYPTION_KEY") || "default-key-change-in-production";
+  const key = process.env.ENCRYPTION_KEY || "default-key-change-in-production";
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const keyData = encoder.encode(key);

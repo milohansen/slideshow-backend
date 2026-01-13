@@ -3,7 +3,8 @@
  * Handles uploading and retrieving image files
  */
 
-import { Storage, UploadOptions } from "@google-cloud/storage";
+import { Storage } from "@google-cloud/storage";
+import type { UploadOptions } from "@google-cloud/storage";
 import { Readable } from 'node:stream';
 
 let storage: Storage | null = null;
@@ -13,7 +14,7 @@ let bucketName: string | null = null;
  * Initialize Google Cloud Storage client
  */
 export function initStorage() {
-  bucketName = Deno.env.get("GCS_BUCKET_NAME") ?? null;
+  bucketName = process.env.GCS_BUCKET_NAME ?? null;
   
   if (!bucketName) {
     console.warn("⚠️  GCS_BUCKET_NAME not set, using local filesystem storage");

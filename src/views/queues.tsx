@@ -17,11 +17,17 @@ interface DeviceQueue {
 
 interface QueuesProps {
   queues: DeviceQueue[];
+  error?: string;
 }
 
-export const Queues: FC<QueuesProps> = ({ queues }) => {
+export const Queues: FC<QueuesProps> = ({ queues, error }) => {
   return (
     <Layout title="Slideshow Queues">
+      {error && (
+        <div style="background-color: #fee; border: 1px solid #f88; border-radius: 4px; padding: 1rem; margin-bottom: 1rem; color: #c33;">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
       <h1>Slideshow Queues</h1>
       
       {queues.length === 0 ? (

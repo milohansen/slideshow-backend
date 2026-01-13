@@ -1,7 +1,8 @@
-import { crypto } from "@std/crypto";
+import { serve } from "@hono/node-server";
+import { serveStatic } from '@hono/node-server/serve-static'
+import { randomUUID } from "crypto";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { serveStatic } from "hono/deno";
 import { logger } from "hono/logger";
 import { initFirestore } from "./db/firestore.ts";
 import { optionalAuth } from "./middleware/auth.ts";
@@ -15,7 +16,7 @@ import { initStorage } from "./services/storage.ts";
 const app = new Hono();
 
 // Generate unique app instance ID
-export const APP_INSTANCE_ID = crypto.randomUUID();
+export const APP_INSTANCE_ID = randomUUID();
 console.log(`🆔 App instance ID: ${APP_INSTANCE_ID}`);
 
 // Middleware
@@ -34,7 +35,7 @@ try {
   console.error("   1. GCP_PROJECT environment variable is set");
   console.error("   2. Service account credentials are properly configured");
   console.error("   3. Network connectivity to Firestore is available");
-  Deno.exit(1);
+  process.exit(1);
 }
 
 // Initialize job queue service
@@ -73,18 +74,11 @@ app.get("/", (c) => {
 });
 
 // Cloud Run sets PORT environment variable (default to 8080 for local dev)
-const port = Number(Deno.env.get("PORT")) || 8080;
+const port = Number(process.env.PORT) || 8080;
 
-const server = Deno.serve(
-  {
-    port,
-    hostname: "0.0.0.0",
-    onListen: ({ hostname, port }) => {
-      console.log(`🚀 Server running on http://${hostname}:${port}`);
-    },
-  },
-  app.fetch
-);
+const server = serve({ fetch: app.fetch, port }, (info) => {
+  console.log(`🚀 Server running on http://0.0.0.0:${info.port}`);
+});
 
 // Graceful shutdown handling for Cloud Run
 const shutdown = async (signal: string) => {
@@ -94,15 +88,16 @@ const shutdown = async (signal: string) => {
     // Flush pending job queue
     await shutdownJobQueue();
 
-    await server.shutdown();
-    console.log("Server closed successfully");
-    Deno.exit(0);
+    server.close(() => {
+      console.log("Server closed successfully");
+      process.exit(0);
+    });
   } catch (error) {
     console.error("Error during shutdown:", error);
-    Deno.exit(1);
+    process.exit(1);
   }
 };
 
 // Handle termination signals (Cloud Run sends SIGTERM)
-Deno.addSignalListener("SIGTERM", () => shutdown("SIGTERM"));
-Deno.addSignalListener("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

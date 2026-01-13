@@ -13,11 +13,17 @@ interface Device {
 
 interface DevicesProps {
   devices: Device[];
+  error?: string;
 }
 
-export const Devices: FC<DevicesProps> = ({ devices }) => {
+export const Devices: FC<DevicesProps> = ({ devices, error }) => {
   return (
     <Layout title="Devices">
+      {error && (
+        <div style="background-color: #fee; border: 1px solid #f88; border-radius: 4px; padding: 1rem; margin-bottom: 1rem; color: #c33;">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
         <h1>Registered Devices</h1>
         <button id="add-device-btn" class="btn btn-primary">+ Add Device</button>

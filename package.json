@@ -5,13 +5,13 @@
   "main": "src/main.ts",
   "type": "module",
   "scripts": {
-    "dev": "deno run -A --env --watch src/main.ts",
-    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
-    "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts",
-    "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts",
-    "test:colors": "deno run --allow-read --allow-run tests/color-extraction-performance.ts",
-    "build": "deno compile --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
-    "test": "deno test --allow-all",
+    "dev": "yarn tsx --watch --env-file=.env src/main.ts",
+    "start": "yarn tsx src/main.ts",
+    "cli": "yarn tsx src/cli.ts",
+    "register-devices": "yarn tsx src/register-devices.ts",
+    "test:colors": "yarn tsx tests/color-extraction-performance.ts",
+    "type-check": "tsc --noEmit",
+    "test": "node --test",
     "grpc:test": "node test_grpc.ts"
   },
   "dependencies": {
@@ -21,6 +21,7 @@
     "@google-cloud/tasks": "6.2.1",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
+    "@hono/node-server": "^1.19.8",
     "@material/material-color-utilities": "^0.3.0",
     "@std/cli": "jsr:@std/cli@^1.0.25",
     "@std/crypto": "jsr:@std/crypto@^1.0.5",
@@ -32,11 +33,12 @@
     "sharp": "^0.34.5"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.0.0"
   },
   "keywords": [
     "slideshow",

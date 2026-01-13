@@ -53,6 +53,6 @@ async function cleanupImages() {
   console.log("  - All queue states cleared");
 }
 
-if (import.meta.main) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   await cleanupImages();
 }

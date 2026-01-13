@@ -1,5 +1,6 @@
 ## TypeScript Code Standards
 
+- All imports should be at the top of the file, no dynamic imports.
 - Always prefer `const` over `let` and `let` over `var`.
 - Always use `type` aliases for object shapes instead of `interface` unless you need to use `extends` or `implements`.
 - Use explicit return types for all functions and methods.

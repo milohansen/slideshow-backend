@@ -75,11 +75,11 @@ let taskQueue: CloudTaskQueue | null = null;
  * Initialize the Cloud Tasks queue
  */
 export function initJobQueue() {
-  const projectId = Deno.env.get("GCP_PROJECT_ID") || Deno.env.get("GOOGLE_CLOUD_PROJECT");
-  const location = Deno.env.get("CLOUD_TASKS_LOCATION") || "northamerica-northeast1";
-  const queueName = Deno.env.get("CLOUD_TASKS_QUEUE") || "image-processing-queue";
-  const workflowUrl = Deno.env.get("WORKFLOW_URL");
-  const serviceAccountEmail = Deno.env.get("WORKFLOW_SERVICE_ACCOUNT");
+  const projectId = process.env.GCP_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
+  const location = process.env.CLOUD_TASKS_LOCATION || "northamerica-northeast1";
+  const queueName = process.env.CLOUD_TASKS_QUEUE || "image-processing-queue";
+  const workflowUrl = process.env.WORKFLOW_URL;
+  const serviceAccountEmail = process.env.WORKFLOW_SERVICE_ACCOUNT;
 
   if (!projectId) {
     console.warn("⚠️ GCP_PROJECT_ID not set - task queue will not function");

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getUserId } from "../middleware/auth.ts";
 import { createReadStream } from "../services/storage.ts";
+import { queueSourceProcessing } from "../services/job-queue-v2.ts";
 import { Devices } from "../views/devices.tsx";
 import { Home } from "../views/home.tsx";
 import { Images } from "../views/images.tsx";
@@ -55,8 +56,8 @@ ui.get("/debug", async (c) => {
     return c.json({
       status: "error",
       error: error.message,
-      code: error.code,
-      details: error.details,
+      code: (error as any).code,
+      details: (error as any).details,
       stack: error.stack
     }, 500);
   }
@@ -244,7 +245,7 @@ ui.get("/thumbnails/:imageId", async (c) => {
 
   // Construct deterministic thumbnail path
   const thumbnailPath = `processed/thumbnails/${imageId}.jpg`;
-  const gcsPath = `gs://${Deno.env.get("GCS_BUCKET") || "slideshow-images"}/${thumbnailPath}`;
+  const gcsPath = `gs://${process.env.GCS_BUCKET || "slideshow-images"}/${thumbnailPath}`;
 
   const stream = createReadStream(gcsPath);
 
@@ -308,7 +309,6 @@ ui.post("/images/:id/retry", async (c) => {
   
   // Queue for processing via job queue v2
   try {
-    const { queueSourceProcessing } = await import("../services/job-queue-v2.ts");
     await queueSourceProcessing(sourceDoc.id);
     console.log(`[UI] Source queued for reprocessing: ${sourceDoc.id}`);
   } catch (error) {

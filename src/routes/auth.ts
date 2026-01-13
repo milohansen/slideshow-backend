@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getCookie, setCookie } from "hono/cookie";
-import { google, storeSession, deleteSession, parseIdToken, UserSession } from "../services/auth.ts";
+import { google, storeSession, deleteSession, parseIdToken } from "../services/auth.ts";
+import type { UserSession } from "../services/auth.ts";
 
 const auth = new Hono<{ Variables: { session: UserSession | null } }>();
 
@@ -20,7 +21,7 @@ auth.get("/google", async (c) => {
   // Store state and code verifier in httpOnly cookies for security
   setCookie(c, "oauth_state", state, {
     httpOnly: true,
-    secure: Deno.env.get("DENO_ENV") === "production",
+    secure: process.env.NODE_ENV === "production",
     maxAge: 600, // 10 minutes
     sameSite: "Lax",
     path: "/",
@@ -28,7 +29,7 @@ auth.get("/google", async (c) => {
 
   setCookie(c, "code_verifier", codeVerifier, {
     httpOnly: true,
-    secure: Deno.env.get("DENO_ENV") === "production",
+    secure: process.env.NODE_ENV === "production",
     maxAge: 600, // 10 minutes
     sameSite: "Lax",
     path: "/",
@@ -84,7 +85,7 @@ auth.get("/google/callback", async (c) => {
     // Create session cookie
     setCookie(c, "session_id", sessionId, {
       httpOnly: true,
-      secure: Deno.env.get("DENO_ENV") === "production",
+      secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 30, // 30 days
       sameSite: "Lax",
       path: "/",

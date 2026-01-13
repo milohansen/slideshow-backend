@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { getAccessToken, getUserId } from "../middleware/auth.ts";
 import { createPickerSession, deletePickerSession, getAllMediaItems, getPickerSessionStatus, getPickerSessionFromDb } from "../services/google-photos.ts";
 import { updatePickerSession } from "../db/helpers-firestore.ts";
+import { ingestFromGooglePhotos } from "../services/image-ingestion-v2.ts";
 
 const photos = new Hono();
 
@@ -157,14 +158,10 @@ photos.post("/picker/:sessionId/ingest", async (c) => {
 
     // Get media items
     const mediaItems = await getAllMediaItems(accessToken, sessionId);
-
     // Filter for images only
     const images = mediaItems.filter((item) => item.type === "PHOTO");
 
     console.log(`📥 Starting ingestion of ${images.length} images from Google Photos`);
-
-    // Import from services/image-ingestion.ts - we'll extend this next
-    const { ingestFromGooglePhotos } = await import("../services/image-ingestion.ts");
 
     const results = await ingestFromGooglePhotos(accessToken, images);
 
