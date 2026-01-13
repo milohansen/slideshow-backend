@@ -6,6 +6,9 @@ WORKDIR /app
 # Copy dependency files
 COPY deno.json deno.lock ./
 
+# Enable node_modules directory for npm packages (sharp needs native bindings)
+ENV DENO_NODE_MODULES_DIR=auto
+
 # Copy source files for dependency resolution
 COPY src/main.ts ./
 
@@ -18,9 +21,11 @@ FROM denoland/deno:2.6.4
 WORKDIR /app
 
 # Copy cached dependencies from previous stage
+COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /deno-dir /deno-dir
 
-# Set Deno cache directory
+# Enable node_modules directory
+ENV DENO_NODE_MODULES_DIR=auto
 ENV DENO_DIR=/deno-dir
 
 # Copy dependency files
@@ -40,4 +45,4 @@ ENV DENO_ENV=production
 EXPOSE 8080
 
 # Run the application
-CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-ffi", "--allow-run", "src/main.ts"]
+CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-ffi", "--allow-run", "main.ts"]
