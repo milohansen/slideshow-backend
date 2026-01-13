@@ -4,8 +4,8 @@ WORKDIR /app
 
 # Install Yarn using the official distribution repository
 RUN corepack enable \
-    && yarn set version berry
-
+    && yarn set version berry \
+    && yarn -v
 
 # Copy package files
 COPY package.json yarn.lock ./
@@ -27,4 +27,4 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 # Run the application
-CMD ["yarn", "start"]
+CMD ["yarn", "tsx", "src/main.ts"]

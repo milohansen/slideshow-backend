@@ -33,3 +33,8 @@ tmp/
 
 # Documentation
 docs/
+
+# Yarn PnP and Cache (Keep these generated inside Docker)
+.pnp.cjs
+.pnp.loader.mjs
+.yarn/
