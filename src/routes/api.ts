@@ -25,6 +25,7 @@ api.post("/processing/:imageId/start", async (c) => {
   const db = getFirestore();
 
   const devicesSnapshot = await db.collection(Collections.DEVICES).orderBy("created_at", "desc").get();
+  const sourceDoc = await db.collection(Collections.SOURCES).doc(c.req.param("imageId")).get()
 
   const devices = devicesSnapshot.docs.map((doc) => {
     const data = doc.data();
@@ -42,6 +43,7 @@ api.post("/processing/:imageId/start", async (c) => {
   return c.json({
     attempt: 1,
     devices,
+    source: sourceDoc.data()
   } as ProcessingStartResponse);
 });
 
