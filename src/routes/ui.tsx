@@ -200,9 +200,8 @@ ui.get("/thumbnails/:imageId", async (c) => {
 
   // Construct deterministic thumbnail path
   const thumbnailPath = `processed/thumbnails/${imageId}`;
-  const gcsPath = `gs://${process.env.GCS_BUCKET_NAME || "slideshow-images"}/${thumbnailPath}`;
 
-  const stream = createReadStream(gcsPath);
+  const stream = createReadStream(thumbnailPath);
 
   return c.body(stream, 200, {
     "Content-Type": "image/jpeg",
