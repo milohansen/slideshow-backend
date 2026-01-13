@@ -10,7 +10,6 @@ import adminRoutes from "./routes/admin.ts";
 import authRoutes from "./routes/auth.ts";
 import deviceRoutes from "./routes/devices.ts";
 import uiRoutes from "./routes/ui.tsx";
-import { initJobQueue, shutdownJobQueue } from "./services/job-queue.ts";
 import { initStorage } from "./services/storage.ts";
 
 const app = new Hono();
@@ -37,9 +36,6 @@ try {
   console.error("   3. Network connectivity to Firestore is available");
   process.exit(1);
 }
-
-// Initialize job queue service
-initJobQueue();
 
 // Health check endpoint for Cloud Run
 app.get("/_health", (c) => {
@@ -85,9 +81,6 @@ const shutdown = async (signal: string) => {
   console.log(`\n${signal} received, starting graceful shutdown...`);
 
   try {
-    // Flush pending job queue
-    await shutdownJobQueue();
-
     server.close(() => {
       console.log("Server closed successfully");
       process.exit(0);

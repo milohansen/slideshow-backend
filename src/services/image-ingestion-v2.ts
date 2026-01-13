@@ -8,12 +8,12 @@ import { crypto } from "@std/crypto";
 import { encodeHex } from "@std/encoding/hex";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
-import { readFile } from "fs/promises";
-import { readdirSync, statSync, unlinkSync, renameSync, writeFileSync, mkdtempSync } from "fs";
-import { createSource } from "../db/helpers-firestore.ts";
-import { isGCSEnabled, uploadFile } from "./storage.ts";
-import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
+import { readdirSync, renameSync, statSync, unlinkSync } from "fs";
+import { mkdtemp, readFile, writeFile } from "fs/promises";
 import { tmpdir } from "os";
+import { createSource } from "../db/helpers-firestore.ts";
+import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
+import { isGCSEnabled, uploadFile } from "./storage.ts";
 
 export type StagedImageInput = {
   localPath: string;
@@ -206,11 +206,11 @@ export async function ingestFromGooglePhotos(
         const fileData = await downloadMediaItem(accessToken, image.mediaFile.baseUrl);
 
         // Write to temporary file
-        const tempDir = mkdtempSync(`${tmpdir()}/slideshow-backend`);
+        const tempDir = await mkdtemp(`${tmpdir()}/slideshow-backend`);
         const ext = image.mediaFile.filename.substring(image.mediaFile.filename.lastIndexOf("."));
         const tempPath = `${tempDir}/${crypto.randomUUID()}${ext}`;
 
-        writeFileSync(tempPath, fileData);
+        await writeFile(tempPath, fileData);
 
         const result = await stageImageForProcessing({
           localPath: tempPath, // Use Google Photos ID as identifier (will be resolved by processor)

@@ -1,20 +1,20 @@
-import { Hono } from "hono";
-import { mkdtempSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { requireAuth } from "../middleware/auth.ts";
-import photosRoutes from "./photos.ts";
-import { getFirestore, Collections } from "../db/firestore.ts";
 import type { Firestore } from "@google-cloud/firestore";
+import { mkdtempSync, writeFileSync } from "fs";
+import { Hono } from "hono";
+import { tmpdir } from "os";
+import { Collections, getFirestore } from "../db/firestore.ts";
 import {
   countSourcesByStatus,
   deleteBlob,
   deleteSource,
-  getSourcesForBlob,
   getSource,
+  getSourcesForBlob,
 } from "../db/helpers-firestore.ts";
-import { deleteFile } from "../services/storage.ts";
+import { requireAuth } from "../middleware/auth.ts";
 import { stageImageForProcessing } from "../services/image-ingestion-v2.ts";
-import { queueSourceProcessing } from "../services/job-queue-v2.ts";
+import { runJob } from "../services/jobs.ts";
+import { deleteFile } from "../services/storage.ts";
+import photosRoutes from "./photos.ts";
 
 const admin = new Hono();
 
@@ -85,7 +85,8 @@ admin.post("/upload", async (c) => {
         
         // Queue for processing
         if (result.sourceId) {
-          await queueSourceProcessing(result.sourceId);
+          await runJob(result.sourceId);
+          // await queueSourceProcessing(result.sourceId);
         }
         
         return {

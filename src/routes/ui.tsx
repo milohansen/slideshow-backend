@@ -1,67 +1,22 @@
 import { Hono } from "hono";
+import { Collections, getFirestore } from "../db/firestore.ts";
+import {
+  countVariantsForBlob,
+  getActivePickerSession,
+  getAllDevices,
+  getSourcesForBlob
+} from "../db/helpers-firestore.ts";
 import { getUserId } from "../middleware/auth.ts";
+import { runJob } from "../services/jobs.ts";
 import { createReadStream } from "../services/storage.ts";
-import { queueSourceProcessing } from "../services/job-queue-v2.ts";
 import { Devices } from "../views/devices.tsx";
 import { Home } from "../views/home.tsx";
 import { Images } from "../views/images.tsx";
 import { PhotosPicker } from "../views/photos-picker.tsx";
 import { Queues } from "../views/queues.tsx";
 import { Upload } from "../views/upload.tsx";
-import { getFirestore, Collections } from "../db/firestore.ts";
-import {
-  getBlobsByOrientation,
-  getSourcesForBlob,
-  countVariantsForBlob,
-  getAllDevices,
-  getActivePickerSession,
-} from "../db/helpers-firestore.ts";
 
 const ui = new Hono();
-
-// Debug route to test Firestore connection
-ui.get("/debug", async (c) => {
-  try {
-    const db = getFirestore();
-    console.log("🔍 Testing Firestore connection...");
-    
-    // Test basic connection
-    const startTime = Date.now();
-    await db.listCollections();
-    const connectionTime = Date.now() - startTime;
-    console.log(`✅ Firestore connection test passed (${connectionTime}ms)`);
-    
-    // Test simple read operation
-    const testStartTime = Date.now();
-    const blobsTest = await db.collection(Collections.BLOBS).limit(1).get();
-    const readTime = Date.now() - testStartTime;
-    console.log(`✅ Firestore read test passed (${readTime}ms), docs: ${blobsTest.size}`);
-    
-    return c.json({
-      status: "success",
-      connectionTime: `${connectionTime}ms`,
-      readTime: `${readTime}ms`,
-      docsInBlobs: blobsTest.size,
-      collections: Collections
-    });
-    
-  } catch (error) {
-    console.error("❌ Firestore debug test failed:", error);
-    if (!(error instanceof Error)) {
-      return c.json({
-        status: "error",
-        error: "Unknown error occurred",
-      }, 500);
-    }
-    return c.json({
-      status: "error",
-      error: error.message,
-      code: (error as any).code,
-      details: (error as any).details,
-      stack: error.stack
-    }, 500);
-  }
-});
 
 // Home page
 ui.get("/", async (c) => {
@@ -309,7 +264,8 @@ ui.post("/images/:id/retry", async (c) => {
   
   // Queue for processing via job queue v2
   try {
-    await queueSourceProcessing(sourceDoc.id);
+    // await queueSourceProcessing(sourceDoc.id);
+    await runJob(sourceDoc.id)
     console.log(`[UI] Source queued for reprocessing: ${sourceDoc.id}`);
   } catch (error) {
     console.error(`[UI] Failed to queue source: ${error}`);
