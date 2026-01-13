@@ -13,7 +13,7 @@ ENV DENO_NODE_MODULES_DIR=auto
 COPY src/main.ts ./
 
 # Pre-cache dependencies with lock file
-RUN deno cache --frozen src/main.ts
+RUN deno cache --frozen main.ts
 
 # Final stage
 FROM denoland/deno:2.6.4
