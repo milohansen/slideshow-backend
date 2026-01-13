@@ -25,8 +25,17 @@ app.use("*", cors());
 // Initialize storage first
 initStorage();
 
-// Initialize Firestore
-await initFirestore();
+// Initialize Firestore with error handling
+try {
+  await initFirestore();
+} catch (error) {
+  console.error("🔥 Failed to initialize Firestore:", error);
+  console.error("💡 Make sure:");
+  console.error("   1. GCP_PROJECT environment variable is set");
+  console.error("   2. Service account credentials are properly configured");
+  console.error("   3. Network connectivity to Firestore is available");
+  Deno.exit(1);
+}
 
 // Initialize job queue service
 initJobQueue();
@@ -48,6 +57,9 @@ app.use("/assets/*", serveStatic({ root: "./" }));
 // Public UI routes (with optional auth for better UX)
 app.use("/ui/*", optionalAuth);
 app.route("/ui", uiRoutes);
+app.get("/home", (c) => {
+  return c.text("Home sweet home!");
+});
 
 // Device API routes (public for now - devices authenticate via device ID)
 app.route("/api/devices", deviceRoutes);

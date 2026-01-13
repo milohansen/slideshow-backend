@@ -7,6 +7,7 @@ interface HomeProps {
     totalDevices: number;
     processedVariants: number;
     orientations: Record<string, number>;
+    error?: string;
   };
 }
 
@@ -14,6 +15,14 @@ export const Home: FC<HomeProps> = ({ stats }) => {
   return (
     <Layout title="Home">
       <h1>Dashboard</h1>
+      
+      {stats.error && (
+        <div class="card error">
+          <h2 style="color: #d73a49;">⚠️ Error Loading Data</h2>
+          <p>{stats.error}</p>
+          <p>Please check your Firestore security rules and authentication setup.</p>
+        </div>
+      )}
       
       <div class="grid">
         <div class="card stat">

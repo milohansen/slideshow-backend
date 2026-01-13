@@ -17,12 +17,65 @@ export function getFirestore(): Firestore {
  * Uses Application Default Credentials from environment
  */
 export async function initFirestore(): Promise<void> {
-  db = new Firestore({
-    projectId: Deno.env.get("GCP_PROJECT") || undefined,
-    databaseId: "(default)",
-  });
+  try {
+    // Support both GCP_PROJECT and GCP_PROJECT_ID for flexibility
+    const projectId = Deno.env.get("GCP_PROJECT") || Deno.env.get("GCP_PROJECT_ID");
+    
+    if (!projectId) {
+      throw new Error("Missing GCP_PROJECT or GCP_PROJECT_ID environment variable");
+    }
 
-  console.log("✓ Firestore initialized");
+    const firestoreConfig: any = {
+      projectId,
+      databaseId: "(default)",
+    };
+
+    // Check if using Firestore emulator
+    // const emulatorHost = Deno.env.get("FIRESTORE_EMULATOR_HOST");
+    // if (emulatorHost) {
+    //   firestoreConfig.host = emulatorHost;
+    //   firestoreConfig.ssl = false;
+    //   console.log(`🧪 Using Firestore emulator: ${emulatorHost}`);
+    // } else {
+    //   // For local development, use service account credentials if available
+    //   const credentialsPath = Deno.env.get("GOOGLE_APPLICATION_CREDENTIALS");
+    //   if (credentialsPath) {
+    //     try {
+    //       const credentialsExists = await Deno.stat(credentialsPath).catch(() => null);
+    //       if (credentialsExists) {
+    //         firestoreConfig.keyFilename = credentialsPath;
+    //         console.log(`📄 Using service account credentials: ${credentialsPath}`);
+    //       }
+    //     } catch (error) {
+    //       console.warn(`⚠️  Could not access credentials file: ${credentialsPath}`);
+    //     }
+    //   } else {
+    //     console.log("🔐 Using Application Default Credentials");
+    //   }
+    // }
+
+    db = new Firestore(firestoreConfig);
+
+    // Test the connection with timeout (skip for emulator as it might not be running yet)
+    // if (!emulatorHost) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error("Connection test timeout")), 3000) // Reduced timeout
+        );
+        const testPromise = db.listCollections();
+        await Promise.race([testPromise, timeoutPromise]);
+        console.log("🔗 Firestore connection test successful");
+      } catch (error) {
+        console.warn("⚠️  Firestore connection test failed (but continuing):", error instanceof Error ? error.message : error);
+        // Don't throw error, just log it - the app can still function with delayed connections
+      }
+    // }
+    
+    console.log(`✓ Firestore initialized (Project: ${projectId})`);
+  } catch (error) {
+    console.error("❌ Failed to initialize Firestore:", error);
+    throw error;
+  }
 }
 
 /**

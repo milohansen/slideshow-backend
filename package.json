@@ -1,0 +1,61 @@
+{
+  "name": "slideshow-backend",
+  "version": "1.0.0",
+  "description": "Backend service for slideshow image management with Google Cloud integration",
+  "main": "src/main.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "deno run -A --env --watch src/main.ts",
+    "start": "deno run --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
+    "cli": "deno run --allow-read --allow-write --allow-env --allow-ffi --allow-run src/cli.ts",
+    "register-devices": "deno run --allow-read --allow-write --allow-env --allow-ffi src/register-devices.ts",
+    "test:colors": "deno run --allow-read --allow-run tests/color-extraction-performance.ts",
+    "build": "deno compile --allow-net --allow-read --allow-write --allow-env --allow-ffi --allow-run src/main.ts",
+    "test": "deno test --allow-all",
+    "grpc:test": "node test_grpc.ts"
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^8.1.0",
+    "@google-cloud/run": "^3.1.0",
+    "@google-cloud/storage": "7.18.0",
+    "@google-cloud/tasks": "6.2.1",
+    "@grpc/grpc-js": "^1.14.3",
+    "@grpc/proto-loader": "^0.8.0",
+    "@material/material-color-utilities": "^0.3.0",
+    "@std/cli": "jsr:@std/cli@^1.0.25",
+    "@std/crypto": "jsr:@std/crypto@^1.0.5",
+    "@std/encoding": "jsr:@std/encoding@^1.0.10",
+    "@std/fs": "jsr:@std/fs@^1.0.21",
+    "@std/path": "jsr:@std/path@^1.1.4",
+    "arctic": "^3.7.0",
+    "hono": "^4.11.3",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "slideshow",
+    "image-processing",
+    "google-cloud",
+    "firestore",
+    "hono",
+    "typescript",
+    "deno"
+  ],
+  "author": "Milo Hansen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/milohansen/slideshow-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/milohansen/slideshow-backend/issues"
+  },
+  "homepage": "https://github.com/milohansen/slideshow-backend#readme",
+  "packageManager": "yarn@4.12.0"
+}
