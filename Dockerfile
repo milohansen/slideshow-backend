@@ -1,19 +1,3 @@
-# Multi-stage build for efficient caching
-FROM node:24-slim AS deps
-
-WORKDIR /app
-
-# Install Yarn using the official distribution repository
-RUN corepack enable \
-    && yarn set version berry
-
-# Copy dependency files
-COPY package.json yarn.lock ./
-
-# Install dependencies
-RUN yarn install --frozen-lockfile
-
-# Final stage
 FROM node:24-slim
 
 WORKDIR /app
@@ -26,9 +10,8 @@ RUN corepack enable \
 # Copy package files
 COPY package.json yarn.lock ./
 
-# Copy cached dependencies from previous stage
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/.yarn ./.yarn
+# Install dependencies
+RUN yarn install --frozen-lockfile
 
 # Copy source code
 COPY . .
