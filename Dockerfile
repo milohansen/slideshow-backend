@@ -1,14 +1,30 @@
-# Use official Deno image
-FROM denoland/deno:2.6.4
+# Multi-stage build for efficient caching
+FROM denoland/deno:2.6.4 AS deps
 
-# Set working directory
 WORKDIR /app
 
-# Copy dependency files first for better caching
+# Copy dependency files
 COPY deno.json deno.lock ./
 
-# Cache dependencies
-RUN deno install --entrypoint src/main.ts || true
+# Copy source files for dependency resolution
+COPY src/main.ts ./
+
+# Pre-cache dependencies with lock file
+RUN deno cache --frozen src/main.ts
+
+# Final stage
+FROM denoland/deno:2.6.4
+
+WORKDIR /app
+
+# Copy cached dependencies from previous stage
+COPY --from=deps /deno-dir /deno-dir
+
+# Set Deno cache directory
+ENV DENO_DIR=/deno-dir
+
+# Copy dependency files
+COPY deno.json deno.lock ./
 
 # Copy source code
 COPY . .
