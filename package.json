@@ -5,14 +5,13 @@
   "main": "src/main.ts",
   "type": "module",
   "scripts": {
-    "dev": "yarn tsx --watch --env-file=.env src/main.ts",
+    "dev": "yarn tsx --watch --env-file=.env --inspect=5859 src/main.ts",
     "start": "yarn tsx src/main.ts",
     "cli": "yarn tsx src/cli.ts",
     "register-devices": "yarn tsx src/register-devices.ts",
     "test:colors": "yarn tsx tests/color-extraction-performance.ts",
     "type-check": "tsc --noEmit",
-    "test": "node --test",
-    "grpc:test": "node test_grpc.ts"
+    "test": "node --test"
   },
   "dependencies": {
     "@google-cloud/firestore": "^8.1.0",

@@ -42,13 +42,10 @@ export type PickedMediaItem = {
 /**
  * Create a new Google Photos Picker session
  */
-export async function createPickerSession(
-  accessToken: string,
-  userId: string
-): Promise<PickerSession> {
+export async function createPickerSession(accessToken: string, userId: string): Promise<PickerSession> {
   // Clean up expired sessions first
   await cleanupExpiredSessions();
-  
+
   const response = await fetch(`${PICKER_API_BASE}/sessions`, {
     method: "POST",
     headers: {
@@ -67,9 +64,9 @@ export async function createPickerSession(
 
   // Store session in database
   const pollingConfig = data.pollingConfig ? JSON.stringify(data.pollingConfig) : null;
-  
+
   // Append /autoclose to pickerUri to automatically close after selection
-  const pickerUri = data.pickerUri + '/autoclose';
+  const pickerUri = data.pickerUri + "/autoclose";
 
   const sessionId = await createPickerSessionInDb({
     user_id: userId,
@@ -79,7 +76,7 @@ export async function createPickerSession(
     polling_config: pollingConfig ?? undefined,
     expire_time: data.expireTime || null,
   });
-  
+
   const result = await getPickerSession(sessionId);
 
   console.log(`✅ Created picker session: ${data.id}`);
@@ -115,7 +112,7 @@ export async function getPickerSessionStatus(
 
   const result = await response.json();
   console.log(`📊 Session status for ${pickerSessionId}:`, result);
-  
+
   return result;
 }
 
@@ -125,15 +122,12 @@ export async function getPickerSessionStatus(
 export async function getPickerSessionFromDb(sessionId: string): Promise<PickerSession | null> {
   // Need to query by picker_session_id, not document ID
   const db = getFirestore();
-  const snapshot = await db.collection(Collections.PICKER_SESSIONS)
-    .where("picker_session_id", "==", sessionId)
-    .limit(1)
-    .get();
-  
+  const snapshot = await db.collection(Collections.PICKER_SESSIONS).where("picker_session_id", "==", sessionId).limit(1).get();
+
   if (snapshot.empty) {
     return null;
   }
-  
+
   return snapshot.docs[0].data() as PickerSession;
 }
 
@@ -158,14 +152,11 @@ export async function listMediaItems(
     params.set("pageToken", pageToken);
   }
 
-  const response = await fetch(
-    `${PICKER_API_BASE}/mediaItems?${params}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    }
-  );
+  const response = await fetch(`${PICKER_API_BASE}/mediaItems?${params}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
 
   if (!response.ok) {
     const error = await response.text();
@@ -184,10 +175,7 @@ export async function listMediaItems(
 /**
  * Get all media items from a picker session (handles pagination)
  */
-export async function getAllMediaItems(
-  accessToken: string,
-  pickerSessionId: string
-): Promise<PickedMediaItem[]> {
+export async function getAllMediaItems(accessToken: string, pickerSessionId: string): Promise<PickedMediaItem[]> {
   const allItems: PickedMediaItem[] = [];
   let pageToken: string | undefined;
 
@@ -211,7 +199,7 @@ export async function deletePickerSession(pickerSessionId: string): Promise<bool
   if (!session) {
     return false;
   }
-  
+
   const db = getFirestore();
   await db.collection(Collections.PICKER_SESSIONS).doc(session.id).delete();
   console.log(`🗑️  Deleted picker session: ${pickerSessionId}`);
@@ -232,12 +220,7 @@ export async function cleanupExpiredSessions(): Promise<void> {
  * @param width - Optional width for download (default: original)
  * @param height - Optional height for download (default: original)
  */
-export async function downloadMediaItem(
-  accessToken: string,
-  baseUrl: string,
-  width?: number,
-  height?: number
-): Promise<Uint8Array> {
+export async function downloadMediaItem(accessToken: string, baseUrl: string, width?: number, height?: number): Promise<Uint8Array> {
   let downloadUrl = baseUrl;
 
   // Add download parameters

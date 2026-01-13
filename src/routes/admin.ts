@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import { mkdtempSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware/auth.ts";
 import photosRoutes from "./photos.ts";
 import { getFirestore, Collections } from "../db/firestore.ts";
@@ -70,7 +69,7 @@ admin.post("/upload", async (c) => {
       try {
         // Write to temporary file
 
-        const tempDir = mkdtempSync(`${tmpdir()}/slideshow-`);
+        const tempDir = mkdtempSync(`${tmpdir()}/slideshow-backend`);
         const ext = file.name.substring(file.name.lastIndexOf("."));
         const tempPath = `${tempDir}/${crypto.randomUUID()}${ext}`;
         

@@ -1,4 +1,5 @@
 import { Firestore } from "@google-cloud/firestore";
+import type { Settings } from "@google-cloud/firestore";
 import { statSync } from "node:fs";
 
 let db: Firestore;
@@ -26,9 +27,10 @@ export async function initFirestore(): Promise<void> {
       throw new Error("Missing GCP_PROJECT or GCP_PROJECT_ID environment variable");
     }
 
-    const firestoreConfig: any = {
+    const firestoreConfig: Settings = {
       projectId,
       databaseId: "(default)",
+      ignoreUndefinedProperties: true,
     };
 
     // Check if using Firestore emulator

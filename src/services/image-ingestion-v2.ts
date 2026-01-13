@@ -9,23 +9,25 @@ import { encodeHex } from "@std/encoding/hex";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 import { readFile } from "fs/promises";
-import { readdirSync, statSync, unlinkSync, renameSync } from "fs";
+import { readdirSync, statSync, unlinkSync, renameSync, writeFileSync, mkdtempSync } from "fs";
 import { createSource } from "../db/helpers-firestore.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
+import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
+import { tmpdir } from "os";
 
-export interface StagedImageInput {
+export type StagedImageInput = {
   localPath: string;
-  origin: "upload" | "google_photos" | "url";
+  origin: "upload" | "url" | "google_photos";
   userId?: string;
   externalId?: string; // Google Photos ID, URL, etc.
-}
+};
 
-export interface IngestionResult {
+export type IngestionResult = {
   sourceId: string;
   status: "staged" | "duplicate";
   blobHash?: string; // Set if duplicate detected
   message?: string;
-}
+};
 
 /**
  * Calculate SHA-256 hash of a file
@@ -47,7 +49,7 @@ export async function stageImageForProcessing(input: StagedImageInput): Promise<
   try {
     // Calculate hash for optional duplicate detection
     // Note: Full duplicate detection happens in processor after download
-    const fileHash = await calculateFileHash(input.localPath);
+    // const fileHash = await calculateFileHash(input.localPath);
 
     // Upload to staging bucket
     let stagingPath: string;
@@ -195,52 +197,106 @@ export async function cleanupStagingFiles(daysOld: number = 7): Promise<number> 
  */
 export async function ingestFromGooglePhotos(
   accessToken: string,
-  images: any[] // PickedMediaItem array from google-photos service
+  images: PickedMediaItem[] // PickedMediaItem array from google-photos service
 ): Promise<{ ingested: number; skipped: number; failed: number; details: Array<{ id: string; status: string; message?: string }> }> {
+  const details = await Promise.all(
+    images.map(async (image) => {
+      try {
+        // save the original to GCS staging and create source record
+        const fileData = await downloadMediaItem(accessToken, image.mediaFile.baseUrl);
+
+        // Write to temporary file
+        const tempDir = mkdtempSync(`${tmpdir()}/slideshow-backend`);
+        const ext = image.mediaFile.filename.substring(image.mediaFile.filename.lastIndexOf("."));
+        const tempPath = `${tempDir}/${crypto.randomUUID()}${ext}`;
+
+        writeFileSync(tempPath, fileData);
+
+        const result = await stageImageForProcessing({
+          localPath: tempPath, // Use Google Photos ID as identifier (will be resolved by processor)
+          origin: "google_photos",
+          externalId: image.id,
+          userId: undefined, // Set by upstream auth context
+        });
+
+        if (result.status === "staged") {
+          return {
+            id: image.id,
+            status: "ingested",
+            message: `Source ${result.sourceId} staged for processing`,
+          };
+        } else {
+          return {
+            id: image.id,
+            status: "skipped",
+            message: result.message || "Image already exists (duplicate)",
+          };
+        }
+      } catch (error) {
+        console.error(`Failed to ingest Google Photos image ${image.id}:`, error);
+        return {
+          id: image.id,
+          status: "failed",
+          message: error instanceof Error ? error.message : "Unknown error",
+        };
+      }
+    })
+  );
+
   const results = {
     ingested: 0,
     skipped: 0,
     failed: 0,
-    details: [] as Array<{ id: string; status: string; message?: string }>,
+    details,
   };
 
-  for (const image of images) {
-    try {
-      // For Google Photos, we'll stage the image with the external ID
-      // The actual download and processing happens in the processor service
-      const result = await stageImageForProcessing({
-        localPath: image.id, // Use Google Photos ID as identifier (will be resolved by processor)
-        origin: "google_photos",
-        externalId: image.id,
-        userId: undefined, // Set by upstream auth context
-      });
-
-      if (result.status === "staged") {
-        results.ingested++;
-        results.details.push({
-          id: image.id,
-          status: "ingested",
-          message: `Source ${result.sourceId} staged for processing`,
-        });
-      } else {
-        results.skipped++;
-        results.details.push({
-          id: image.id,
-          status: "skipped",
-          message: result.message || "Image already exists (duplicate)",
-        });
-      }
-    } catch (error) {
-      results.failed++;
-      results.details.push({
-        id: image.id,
-        status: "failed",
-        message: error instanceof Error ? error.message : "Unknown error",
-      });
-      console.error(`Failed to ingest Google Photos image ${image.id}:`, error);
-    }
+  for (const detail of details) {
+    results[detail.status as "ingested" | "skipped" | "failed"]++;
   }
+
+  // const results = {
+  //   ingested: 0,
+  //   skipped: 0,
+  //   failed: 0,
+  //   details: [] as Array<{ id: string; status: string; message?: string }>,
+  // };
+
+  // for (const image of images) {
+  //   try {
+  //     // For Google Photos, we'll stage the image with the external ID
+  //     // The actual download and processing happens in the processor service
+  //     const result = await stageImageForProcessing({
+  //       localPath: image.id, // Use Google Photos ID as identifier (will be resolved by processor)
+  //       origin: "google_photos",
+  //       externalId: image.id,
+  //       userId: undefined, // Set by upstream auth context
+  //     });
+
+  //     if (result.status === "staged") {
+  //       results.ingested++;
+  //       results.details.push({
+  //         id: image.id,
+  //         status: "ingested",
+  //         message: `Source ${result.sourceId} staged for processing`,
+  //       });
+  //     } else {
+  //       results.skipped++;
+  //       results.details.push({
+  //         id: image.id,
+  //         status: "skipped",
+  //         message: result.message || "Image already exists (duplicate)",
+  //       });
+  //     }
+  //   } catch (error) {
+  //     results.failed++;
+  //     results.details.push({
+  //       id: image.id,
+  //       status: "failed",
+  //       message: error instanceof Error ? error.message : "Unknown error",
+  //     });
+  //     console.error(`Failed to ingest Google Photos image ${image.id}:`, error);
+  //   }
+  // }
 
   return results;
 }
-

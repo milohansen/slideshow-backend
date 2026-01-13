@@ -71,6 +71,13 @@ auth.get("/google/callback", async (c) => {
     // Calculate expires_in from accessTokenExpiresAt
     const expiresIn = Math.floor((tokens.accessTokenExpiresAt().getTime() - Date.now()) / 1000);
 
+    let refreshToken: string | null = null;
+    try {
+      refreshToken = tokens.refreshToken();
+    } catch {
+      // ignore if refresh token is not present
+    }
+
     // Store session in database
     const sessionId = await storeSession(
       userInfo.sub, // Google user ID
@@ -78,7 +85,7 @@ auth.get("/google/callback", async (c) => {
       userInfo.name || null,
       userInfo.picture || null,
       tokens.accessToken(),
-      tokens.refreshToken() || null,
+      refreshToken,
       expiresIn
     );
 
