@@ -31,3 +31,15 @@ data/temp-google-photos/
 # Node modules (if needed for any tools)
 node_modules/
 client_secret.json
+
+# Yarn
+.yarn/*
+!.yarn/patches
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+
+# If you are NOT using Zero-Installs (likely your case since you run yarn install in Docker):
+.yarn/cache
+.pnp.*
