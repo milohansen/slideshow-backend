@@ -105,7 +105,7 @@ auth.get("/google/callback", async (c) => {
     console.log(`✅ User authenticated: ${userInfo.email || userInfo.sub}`);
 
     // Redirect to photos picker page
-    return c.redirect("/ui/photos-picker");
+    return c.redirect("/photos-picker");
   } catch (error) {
     console.error("OAuth token exchange error:", error);
     return c.html(`<html><body><h1>Authentication Failed</h1><p>${error instanceof Error ? error.message : "Unknown error"}</p><a href="/">Go Home</a></body></html>`, 500);

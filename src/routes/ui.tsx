@@ -249,7 +249,7 @@ ui.post("/images/:id/retry", async (c) => {
   
   if (!sourceDoc?.exists) {
     console.log(`[UI] Source not found for retry: ${imageId}`);
-    return c.redirect("/ui/images");
+    return c.redirect("/images");
   }
   
   console.log(`[UI] Retrying source: ${sourceDoc.id}`);
@@ -270,7 +270,7 @@ ui.post("/images/:id/retry", async (c) => {
     console.error(`[UI] Failed to queue source: ${error}`);
   }
   
-  return c.redirect("/ui/images");
+  return c.redirect("/images");
 });
 
 export default ui;

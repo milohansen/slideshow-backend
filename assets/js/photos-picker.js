@@ -298,7 +298,7 @@ function setupIngestButton() {
 
         // Redirect to images page after 2 seconds
         setTimeout(() => {
-          window.location.href = "/ui/images";
+          window.location.href = "/images";
         }, 2000);
       } catch (error) {
         progressText.textContent = "❌ Failed to import photos: " + error.message;
