@@ -4,9 +4,8 @@ FROM node:24-slim AS deps
 WORKDIR /app
 
 # Install Yarn using the official distribution repository
-RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - \
-    && echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list \
-    && apt-get update && apt-get install -y yarn
+RUN corepack enable \
+    && yarn set version berry
 
 # Copy dependency files
 COPY package.json yarn.lock ./
@@ -20,9 +19,9 @@ FROM node:24-slim
 WORKDIR /app
 
 # Install Yarn using the official distribution repository
-RUN curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - \
-    && echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list \
-    && apt-get update && apt-get install -y yarn
+RUN corepack enable \
+    && yarn set version berry
+
 
 # Copy package files
 COPY package.json yarn.lock ./
