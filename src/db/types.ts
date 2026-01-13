@@ -36,13 +36,16 @@ export type Source = {
   processed_at?: string; // ISO timestamp
 };
 
+export type LayoutType = "monotych" | "diptych" | "triptych";
+export type Orientation = "portrait" | "landscape" | "square";
+
 export type DeviceVariant = {
   id: string; // Document ID
   blob_hash: string;
   width: number;
   height: number;
-  orientation: "portrait" | "landscape";
-  layout_type: "single" | "pair-vertical" | "pair-horizontal";
+  orientation: Orientation;
+  layout_type: LayoutType;
   storage_path: string;
   file_size?: number;
   processed_at: string; // ISO timestamp
@@ -53,7 +56,7 @@ export type Device = {
   name: string;
   width: number;
   height: number;
-  orientation: "portrait" | "landscape";
+  orientation: Orientation;
   layouts?: string; // JSON string
   gap: number;
   capabilities?: string; // JSON string

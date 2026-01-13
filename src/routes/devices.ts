@@ -243,11 +243,7 @@ devices.get("/:deviceId/images/:imageId/metadata", async (c) => {
         source: blob.color_source || colors[0],
         palette: colors,
         is_dark: false, // TODO: Calculate from primary color luminance
-      },
-      transition: {
-        type: "crossfade",
-        duration_ms: 5000,
-      },
+      }
     });
   } catch (error: any) {
     console.error("Error fetching image metadata:", error);
