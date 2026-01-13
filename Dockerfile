@@ -45,4 +45,4 @@ ENV DENO_ENV=production
 EXPOSE 8080
 
 # Run the application
-CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-ffi", "--allow-run", "main.ts"]
+CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-write", "--allow-env", "--allow-ffi", "--allow-run", "src/main.ts"]
