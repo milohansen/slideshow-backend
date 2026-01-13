@@ -203,12 +203,18 @@ export async function generateSlideshowQueue(deviceId: string, queueSize = 100):
     i++;
   }
 
-  return {
+  const output = {
     deviceId,
     queue,
     currentIndex: 0,
     generatedAt: new Date().toISOString(),
   };
+
+  saveQueueState(output).catch((err) => {
+    console.error(`Failed to save generated queue for device ${deviceId}: ${err.message}`);
+  });
+
+  return output;
 }
 
 /**
