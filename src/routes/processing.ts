@@ -64,6 +64,7 @@ export type ProcessingResult = {
 type LayoutType = "monotych" | "diptych" | "triptych";
 
 type Variant = {
+  device: string;
   width: number;
   height: number;
   orientation: "portrait" | "landscape" | "square";
@@ -101,6 +102,7 @@ processing.post("/:imageId/complete", async (c) => {
 
   await Promise.allSettled(result.variants.map(async (variant) => {
     await createDeviceVariant({
+      device: variant.device,
       blob_hash: result.blobHash!,
       width: variant.width,
       height: variant.height,

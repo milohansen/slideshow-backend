@@ -41,6 +41,7 @@ export type Orientation = "portrait" | "landscape" | "square";
 
 export type DeviceVariant = {
   id: string; // Document ID
+  device: string; // Device ID
   blob_hash: string;
   width: number;
   height: number;
