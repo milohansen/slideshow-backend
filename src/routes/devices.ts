@@ -87,12 +87,12 @@ devices.get("/:deviceId/slideshow", async (c) => {
     
     if (regenerate) {
       // Generate fresh queue
-      queue = await generateSlideshowQueue(deviceId);
+      queue = await generateSlideshowQueue(deviceId, 10);
     } else {
       // Load existing or generate new
       queue = await loadQueueState(deviceId);
       if (!queue) {
-        queue = await generateSlideshowQueue(deviceId);
+        queue = await generateSlideshowQueue(deviceId, 10);
       }
     }
     
