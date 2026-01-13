@@ -1,21 +1,21 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout.tsx";
 
-interface QueueItem {
+type QueueItem = {
   imageId: string;
   filePath: string;
   isPaired?: boolean;
   pairedWith?: string;
 }
 
-interface DeviceQueue {
+type DeviceQueue = {
   deviceId: string;
   deviceName: string;
   queue: QueueItem[];
   currentIndex: number;
 }
 
-interface QueuesProps {
+type QueuesProps = {
   queues: DeviceQueue[];
   error?: string;
 }

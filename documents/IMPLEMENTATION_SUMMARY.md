@@ -62,7 +62,7 @@ This implementation adds comprehensive image processing pipeline infrastructure 
 
 **Consistent Return Type**:
 ```typescript
-interface InitialProcessingResult {
+type InitialProcessingResult = {
   imageId: string;
   metadata: ImageMetadata;
   status: "success" | "skipped" | "failed";

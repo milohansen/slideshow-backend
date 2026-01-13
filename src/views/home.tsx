@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout.tsx";
 
-interface HomeProps {
+type HomeProps = {
   stats: {
     totalImages: number;
     totalDevices: number;

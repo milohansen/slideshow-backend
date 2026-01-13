@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout.tsx";
 
-interface PhotosPickerProps {
+type PhotosPickerProps = {
   session?: {
     sessionId: string;
     pickerUri: string;

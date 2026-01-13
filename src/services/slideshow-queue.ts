@@ -5,7 +5,7 @@
 
 import { getFirestore, Collections } from "../db/firestore.ts";
 import { getDevice, getDeviceQueueState, updateDeviceQueueState } from "../db/helpers-firestore.ts";
-import { evaluateImageForLayouts, type LayoutSlot } from "./image-layout.ts";
+import type { DeviceVariant } from "../db/types.ts";
 
 type ColorPalette = {
   primary: string;
@@ -13,7 +13,7 @@ type ColorPalette = {
   tertiary: string;
   sourceColor: string;
   allColors: string[];
-}
+};
 
 /**
  * Calculate similarity between two color palettes
@@ -23,17 +23,11 @@ function calculatePaletteSimilarity(palette1: ColorPalette, palette2: ColorPalet
   // Returns a value between 0 (identical) and 1 (completely different)
   const hexToRgb = (hex: string): [number, number, number] => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result
-      ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)]
-      : [0, 0, 0];
+    return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [0, 0, 0];
   };
 
   const colorDistance = (rgb1: [number, number, number], rgb2: [number, number, number]): number => {
-    return Math.sqrt(
-      Math.pow(rgb1[0] - rgb2[0], 2) +
-      Math.pow(rgb1[1] - rgb2[1], 2) +
-      Math.pow(rgb1[2] - rgb2[2], 2)
-    ) / (255 * Math.sqrt(3)); // Normalize to 0-1
+    return Math.sqrt(Math.pow(rgb1[0] - rgb2[0], 2) + Math.pow(rgb1[1] - rgb2[1], 2) + Math.pow(rgb1[2] - rgb2[2], 2)) / (255 * Math.sqrt(3)); // Normalize to 0-1
   };
 
   const primary1 = hexToRgb(palette1.primary);
@@ -42,28 +36,37 @@ function calculatePaletteSimilarity(palette1: ColorPalette, palette2: ColorPalet
   return colorDistance(primary1, primary2);
 }
 
+// type QueueItem = {
+//   imageId: string;
+//   blobHash: string;
+//   filePath: string;
+//   colorPalette: ColorPalette;
+//   layoutType: "single" | "pair-vertical" | "pair-horizontal";
+//   variantDimensions: {
+//     width: number;
+//     height: number;
+//   };
+//   cropPercentage?: number;
+//   isPaired?: boolean;
+//   pairedWith?: string;
+//   pairedFilePath?: string;
+// };
+
 type QueueItem = {
-  imageId: string;
-  blobHash: string;
-  filePath: string;
-  colorPalette: ColorPalette;
-  layoutType: "single" | "pair-vertical" | "pair-horizontal";
-  variantDimensions: {
-    width: number;
-    height: number;
-  };
-  cropPercentage?: number;
-  isPaired?: boolean;
-  pairedWith?: string;
-  pairedFilePath?: string;
-}
+  layoutType: "monotych" | "diptych" | "triptych";
+  images: {
+    url: string;
+    source_color?: string;
+    color_palette?: string[];
+  }[];
+};
 
 type SlideshowQueue = {
   deviceId: string;
   queue: QueueItem[];
   currentIndex: number;
   generatedAt: string;
-}
+};
 
 /**
  * Shuffle array using Fisher-Yates algorithm
@@ -77,13 +80,16 @@ function shuffleArray<T>(array: T[]): T[] {
   return shuffled;
 }
 
+type Layouts = {
+  monotych: boolean;
+  diptych: boolean;
+  triptych: boolean;
+};
+
 /**
  * Generate slideshow queue for a device with layout-aware variant selection
  */
-export async function generateSlideshowQueue(
-  deviceId: string,
-  queueSize = 100
-): Promise<SlideshowQueue> {
+export async function generateSlideshowQueue(deviceId: string, queueSize = 100): Promise<SlideshowQueue> {
   const db = getFirestore();
 
   // Get device info including layouts
@@ -94,26 +100,41 @@ export async function generateSlideshowQueue(
   }
 
   // Parse layouts
-  const layouts: LayoutSlot[] = device.layouts ? JSON.parse(device.layouts) : [];
-  
-  if (layouts.length === 0) {
-    console.warn(`Device ${deviceId} has no layouts defined, falling back to legacy mode`);
-    return generateLegacyQueue(deviceId, device, queueSize);
-  }
+  const layouts: Layouts = device.layouts
+    ? JSON.parse(device.layouts)
+    : {
+        monotych: true,
+        diptych: false,
+        triptych: false,
+      };
+
+  // if (layouts.length === 0) {
+  //   console.warn(`Device ${deviceId} has no layouts defined, falling back to legacy mode`);
+  //   return generateLegacyQueue(deviceId, device, queueSize);
+  // }
 
   // Get all device_variants to find unique blob hashes
-  const variantsSnapshot = await db.collection(Collections.DEVICE_VARIANTS).get();
-  const uniqueBlobHashes = [...new Set(variantsSnapshot.docs.map(d => d.data().blob_hash))];
+  const variantsQ = await db.collection(Collections.DEVICE_VARIANTS).where("device", "==", deviceId).get();
+  const variants = variantsQ.docs.map((doc) => doc.data()) as unknown[] as DeviceVariant[];
+
+  const variantMap = new Map<string, DeviceVariant>();
+  const variantsByLayout = new Map<string, DeviceVariant[]>();
+  for (const variant of variants) {
+    if (!variantMap.has(variant.blob_hash)) {
+      variantMap.set(variant.blob_hash, variant);
+      variantsByLayout.set(variant.layout_type, [...(variantsByLayout.get(variant.layout_type) || []), variant]);
+    }
+  }
+
+  const uniqueBlobHashes = [...new Set(variants.map((v) => v.blob_hash))];
 
   // Batch get all blobs (Firestore supports up to 500 per batch)
-  const blobPromises = uniqueBlobHashes.map(hash =>
-    db.collection(Collections.BLOBS).doc(hash).get()
-  );
+  const blobPromises = uniqueBlobHashes.map((hash) => db.collection(Collections.BLOBS).doc(hash).get());
   const blobDocs = await Promise.all(blobPromises);
-  
+
   const blobs = blobDocs
-    .filter(doc => doc.exists)
-    .map(doc => {
+    .filter((doc) => doc.exists)
+    .map((doc) => {
       const data = doc.data()!;
       return {
         blob_hash: doc.id,
@@ -134,184 +155,57 @@ export async function generateSlideshowQueue(
     };
   }
 
-  // For each blob, find the best layout variant
-  const queueCandidates: Array<{
-    blobHash: string;
-    layoutType: string;
-    variantPath: string;
-    variantWidth: number;
-    variantHeight: number;
-    cropPercentage: number;
-    colorPalette: ColorPalette;
-    originalOrientation: string;
-  }> = [];
-
+  const blobMap = new Map<string, (typeof blobs)[0]>();
   for (const blob of blobs) {
-    // Evaluate which layouts this image fits
-    const layoutEvals = evaluateImageForLayouts(blob.width, blob.height, layouts);
-    
-    if (layoutEvals.length === 0) {
-      continue; // No suitable layout for this image
-    }
-
-    // Select layout with minimum crop (first in sorted array)
-    const bestLayout = layoutEvals[0];
-
-    // Find the corresponding device_variant
-    const variantQuery = await db.collection(Collections.DEVICE_VARIANTS)
-      .where("blob_hash", "==", blob.blob_hash)
-      .where("width", "==", bestLayout.width)
-      .where("height", "==", bestLayout.height)
-      .where("layout_type", "==", bestLayout.layoutType)
-      .limit(1)
-      .get();
-
-    if (variantQuery.empty) {
-      console.warn(`No variant found for blob ${blob.blob_hash} with layout ${bestLayout.layoutType}`);
-      continue;
-    }
-
-    const variantData = variantQuery.docs[0].data();
-    const variant = {
-      storage_path: variantData.storage_path,
-      width: variantData.width,
-      height: variantData.height,
-      layout_type: variantData.layout_type,
-    };
-
-    // Parse color palette
-    const colorPalette: ColorPalette = blob.color_palette 
-      ? (() => {
-          const colors = JSON.parse(blob.color_palette);
-          return {
-            primary: colors[0] || "#000000",
-            secondary: colors[1] || "#000000",
-            tertiary: colors[2] || "#000000",
-            sourceColor: blob.color_source || colors[0] || "#000000",
-            allColors: colors,
-          };
-        })()
-      : {
-          primary: "#000000",
-          secondary: "#000000",
-          tertiary: "#000000",
-          sourceColor: "#000000",
-          allColors: [],
-        };
-
-    queueCandidates.push({
-      blobHash: blob.blob_hash,
-      layoutType: variant.layout_type,
-      variantPath: variant.storage_path,
-      variantWidth: variant.width,
-      variantHeight: variant.height,
-      cropPercentage: bestLayout.cropPercentage,
-      colorPalette,
-      originalOrientation: blob.orientation,
-    });
+    blobMap.set(blob.blob_hash, blob);
   }
 
-  // Shuffle candidates
-  const shuffled = shuffleArray(queueCandidates);
-
-  // Build queue with pairing logic for pair-* layouts
   const queue: QueueItem[] = [];
-  const usedForPairing = new Set<string>();
+  let i = 0;
+  while (i < queueSize) {
+    // TODO: semi-randomly select a layout available for this device
+    const layout = "monotych";
+    const imagesNeeded = layout === "monotych" ? 1 : layout === "diptych" ? 2 : 3;
 
-  for (const candidate of shuffled) {
-    if (queue.length >= queueSize) break;
+    const candidates = variantsByLayout.get(layout) || [];
+    if (candidates.length < imagesNeeded) {
+      continue; // Not enough variants for this layout
+    }
 
-    // Check if this should be paired (pair-vertical or pair-horizontal layout)
-    if (
-      (candidate.layoutType === "pair-vertical" || candidate.layoutType === "pair-horizontal") &&
-      !usedForPairing.has(candidate.blobHash)
-    ) {
-      // Find a compatible pair
-      const compatiblePairs = shuffled.filter(
-        (other) =>
-          other.blobHash !== candidate.blobHash &&
-          other.layoutType === candidate.layoutType &&
-          !usedForPairing.has(other.blobHash)
-      );
-
-      if (compatiblePairs.length > 0) {
-        // Find best color match
-        let bestPair = compatiblePairs[0];
-        let bestSimilarity = 0;
-
-        for (const pair of compatiblePairs) {
-          const similarity = calculatePaletteSimilarity(
-            candidate.colorPalette,
-            pair.colorPalette
-          );
-          if (similarity > bestSimilarity) {
-            bestSimilarity = similarity;
-            bestPair = pair;
-          }
-        }
-
-        // Add as paired item
-        queue.push({
-          imageId: candidate.blobHash,
-          blobHash: candidate.blobHash,
-          filePath: candidate.variantPath,
-          colorPalette: candidate.colorPalette,
-          layoutType: candidate.layoutType as "single" | "pair-vertical" | "pair-horizontal",
-          variantDimensions: {
-            width: candidate.variantWidth,
-            height: candidate.variantHeight,
-          },
-          cropPercentage: candidate.cropPercentage,
-          isPaired: true,
-          pairedWith: bestPair.blobHash,
-          pairedFilePath: bestPair.variantPath,
-        });
-
-        usedForPairing.add(candidate.blobHash);
-        usedForPairing.add(bestPair.blobHash);
-        continue;
+    let imagesSelected: DeviceVariant[] = [];
+    const shuffledCandidates = shuffleArray(candidates);
+    
+    // Select images for this layout
+    for (const candidate of shuffledCandidates) {
+      if (imagesSelected.length >= imagesNeeded) {
+        break;
+      }
+      if (!imagesSelected.find((img) => img.blob_hash === candidate.blob_hash)) {
+        imagesSelected.push(candidate);
       }
     }
 
-    // Add as single item (or unpaired)
-    queue.push({
-      imageId: candidate.blobHash,
-      blobHash: candidate.blobHash,
-      filePath: candidate.variantPath,
-      colorPalette: candidate.colorPalette,
-      layoutType: candidate.layoutType as "single" | "pair-vertical" | "pair-horizontal",
-      variantDimensions: {
-        width: candidate.variantWidth,
-        height: candidate.variantHeight,
-      },
-      cropPercentage: candidate.cropPercentage,
-    });
-  }
-
-  // If we need more items, repeat
-  while (queue.length < queueSize && queueCandidates.length > 0) {
-    const reshuffled = shuffleArray(queueCandidates);
-    for (const candidate of reshuffled) {
-      if (queue.length >= queueSize) break;
-      
-      queue.push({
-        imageId: candidate.blobHash,
-        blobHash: candidate.blobHash,
-        filePath: candidate.variantPath,
-        colorPalette: candidate.colorPalette,
-        layoutType: candidate.layoutType as "single" | "pair-vertical" | "pair-horizontal",
-        variantDimensions: {
-          width: candidate.variantWidth,
-          height: candidate.variantHeight,
-        },
-        cropPercentage: candidate.cropPercentage,
-      });
+    if (imagesSelected.length < imagesNeeded) {
+      continue; // Could not select enough unique images
     }
+
+    // Add selected images to queue
+    queue.push({
+      layoutType: layout as "monotych" | "diptych" | "triptych",
+      images: imagesSelected.map((img) => ({
+        url: img.storage_path.replace(/^gs:\/\//, "https://storage.googleapis.com/"),
+        // source_color: img.source_color,
+        // color_palette: img.color_palette,
+        blob_hash: img.blob_hash,
+      })),
+    })
+
+    i++;
   }
 
   return {
     deviceId,
-    queue: queue.slice(0, queueSize),
+    queue,
     currentIndex: 0,
     generatedAt: new Date().toISOString(),
   };
@@ -320,15 +214,11 @@ export async function generateSlideshowQueue(
 /**
  * Legacy queue generation for devices without layouts defined
  */
-async function generateLegacyQueue(
-  deviceId: string,
-  device: { width: number; height: number; orientation: string },
-  queueSize: number
-): Promise<SlideshowQueue> {
+async function generateLegacyQueue(deviceId: string, device: { width: number; height: number; orientation: string }, queueSize: number): Promise<SlideshowQueue> {
   // Legacy mode not supported in Firestore migration
   // The old processed_images table is deprecated
   console.warn(`Legacy queue generation not supported for device ${deviceId}`);
-  
+
   return {
     deviceId,
     queue: [],
@@ -341,11 +231,7 @@ async function generateLegacyQueue(
  * Save queue state to database
  */
 export async function saveQueueState(queue: SlideshowQueue): Promise<void> {
-  await updateDeviceQueueState(
-    queue.deviceId,
-    JSON.stringify(queue),
-    queue.currentIndex
-  );
+  await updateDeviceQueueState(queue.deviceId, JSON.stringify(queue), queue.currentIndex);
 }
 
 /**
@@ -353,7 +239,7 @@ export async function saveQueueState(queue: SlideshowQueue): Promise<void> {
  */
 export async function loadQueueState(deviceId: string): Promise<SlideshowQueue | null> {
   const state = await getDeviceQueueState(deviceId);
-  
+
   if (!state) return null;
 
   const queue = JSON.parse(state.queue_data) as SlideshowQueue;
@@ -382,7 +268,7 @@ export async function getNextImage(deviceId: string): Promise<QueueItem | null> 
   }
 
   const item = queue.queue[queue.currentIndex];
-  
+
   // Update index for next call
   queue.currentIndex++;
   await saveQueueState(queue);

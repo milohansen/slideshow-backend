@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import { Layout } from "./layout.tsx";
 
-interface Device {
+type Device = {
   id: string;
   name: string;
   width: number;
@@ -11,7 +11,7 @@ interface Device {
   last_seen: string | null;
 }
 
-interface DevicesProps {
+type DevicesProps = {
   devices: Device[];
   error?: string;
 }

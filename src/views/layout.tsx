@@ -1,7 +1,7 @@
 import type { FC } from "hono/jsx";
 import type { Child } from "hono/jsx";
 
-interface LayoutProps {
+type LayoutProps = {
   title: string;
   children: Child | Child[];
 }
