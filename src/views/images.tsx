@@ -54,7 +54,7 @@ export const Images: FC<ImagesProps> = ({ images, error }) => {
             <thead>
               <tr>
                 <th>Thumbnail</th>
-                <th>File Path</th>
+                {/* <th>File Path</th> */}
                 <th>Dimensions</th>
                 <th>Orientation</th>
                 <th>Processing Status</th>
@@ -66,7 +66,7 @@ export const Images: FC<ImagesProps> = ({ images, error }) => {
               {images.map((image) => {
                 return (
                 <tr>
-                  <td>
+                  <td title={image.id}>
                     <img 
                       src={`/thumbnails/${image.id}`} 
                       alt={image.file_path.split('/').pop()}
@@ -75,11 +75,11 @@ export const Images: FC<ImagesProps> = ({ images, error }) => {
                     />
                     <div style="width: 80px; height: 53px; background: #f0f0f0; border-radius: 4px; display: none; align-items: center; justify-content: center; font-size: 0.75rem; color: #999;">No thumb</div>
                   </td>
-                  <td>
+                  {/* <td>
                     <code style="font-size: 0.85rem;">
                       {image.file_path.split('/').pop()}
                     </code>
-                  </td>
+                  </td> */}
                   <td>{image.width} × {image.height}</td>
                   <td>
                     <span class={`badge badge-${image.orientation}`}>
