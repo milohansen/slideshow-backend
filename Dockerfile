@@ -10,7 +10,7 @@ COPY deno.json deno.lock ./
 ENV DENO_NODE_MODULES_DIR=auto
 
 # Copy source files for dependency resolution
-COPY src/main.ts ./
+COPY src ./
 
 # Pre-cache dependencies with lock file
 RUN deno cache --frozen main.ts
