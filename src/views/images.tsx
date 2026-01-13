@@ -68,7 +68,7 @@ export const Images: FC<ImagesProps> = ({ images, error }) => {
                 <tr>
                   <td>
                     <img 
-                      src={`/ui/thumbnails/${image.id}`} 
+                      src={`/thumbnails/${image.id}`} 
                       alt={image.file_path.split('/').pop()}
                       style="width: 80px; height: 53px; object-fit: cover; border-radius: 4px;"
                       onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
@@ -100,7 +100,7 @@ export const Images: FC<ImagesProps> = ({ images, error }) => {
                         >
                           ✗ Failed
                         </span>
-                        <form method="post" action={`/ui/images/${image.id}/retry`} style="margin: 0;">
+                        <form method="post" action={`/images/${image.id}/retry`} style="margin: 0;">
                           <button 
                             type="submit" 
                             class="btn-small"

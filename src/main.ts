@@ -1,14 +1,13 @@
 import { serve } from "@hono/node-server";
-import { serveStatic } from '@hono/node-server/serve-static'
+import { serveStatic } from "@hono/node-server/serve-static";
 import { randomUUID } from "crypto";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { initFirestore } from "./db/firestore.ts";
 import { optionalAuth } from "./middleware/auth.ts";
-import adminRoutes from "./routes/admin.ts";
+import apiRoutes from "./routes/api.ts";
 import authRoutes from "./routes/auth.ts";
-import deviceRoutes from "./routes/devices.ts";
 import uiRoutes from "./routes/ui.tsx";
 import { initStorage } from "./services/storage.ts";
 
@@ -48,26 +47,20 @@ app.get("/_health", (c) => {
 // Routes
 app.route("/auth", authRoutes);
 
+
+app.route("/api", apiRoutes);
+
+
+// Public UI routes (with optional auth for better UX)
+// app.use("/ui/*", optionalAuth);
+// app.route("/ui", uiRoutes);
+
 // Serve static assets
 app.use("/assets/*", serveStatic({ root: "./" }));
 
-// Public UI routes (with optional auth for better UX)
-app.use("/ui/*", optionalAuth);
-app.route("/ui", uiRoutes);
-app.get("/home", (c) => {
-  return c.text("Home sweet home!");
-});
-
-// Device API routes (public for now - devices authenticate via device ID)
-app.route("/api/devices", deviceRoutes);
-
-// Admin routes (auth only required for Google Photos)
-app.route("/api/admin", adminRoutes);
-
 // Redirect root to UI
-app.get("/", (c) => {
-  return c.redirect("/ui");
-});
+app.use("*", optionalAuth);
+app.route("/", uiRoutes);
 
 // Cloud Run sets PORT environment variable (default to 8080 for local dev)
 const port = Number(process.env.PORT) || 8080;
