@@ -26,6 +26,8 @@ export function initStorage() {
     // For local development, set GOOGLE_APPLICATION_CREDENTIALS env var
     storage = new Storage();
     console.log(`✅ Google Cloud Storage initialized (bucket: ${bucketName})`);
+
+    
   } catch (error) {
     console.error("Failed to initialize Google Cloud Storage:", error);
     storage = null;

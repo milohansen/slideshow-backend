@@ -10,6 +10,7 @@ import apiRoutes from "./routes/api.ts";
 import authRoutes from "./routes/auth.ts";
 import uiRoutes from "./routes/ui.tsx";
 import { initStorage } from "./services/storage.ts";
+import { runPendingJobs } from "./services/jobs.ts";
 
 const app = new Hono();
 
@@ -27,6 +28,7 @@ initStorage();
 // Initialize Firestore with error handling
 try {
   await initFirestore();
+  runPendingJobs();
 } catch (error) {
   console.error("🔥 Failed to initialize Firestore:", error);
   console.error("💡 Make sure:");

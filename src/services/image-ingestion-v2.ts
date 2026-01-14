@@ -9,11 +9,12 @@ import { encodeHex } from "@std/encoding/hex";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 import { readdirSync, renameSync, statSync, unlinkSync } from "fs";
-import { mkdtemp, readFile, writeFile } from "fs/promises";
+import { mkdtemp, readFile, writeFile, rmdir, unlink } from "fs/promises";
 import { tmpdir } from "os";
 import { createSource } from "../db/helpers-firestore.ts";
 import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
 import { isGCSEnabled, uploadFile } from "./storage.ts";
+import { runJob } from "./jobs.ts";
 
 export type StagedImageInput = {
   localPath: string;
@@ -199,6 +200,9 @@ export async function ingestFromGooglePhotos(
   accessToken: string,
   images: PickedMediaItem[] // PickedMediaItem array from google-photos service
 ): Promise<{ ingested: number; skipped: number; failed: number; details: Array<{ id: string; status: string; message?: string }> }> {
+  const tempDir = await mkdtemp(`${tmpdir()}/slideshow-backend`);
+  const tempFiles : string[] = [];
+
   const details = await Promise.all(
     images.map(async (image) => {
       try {
@@ -206,9 +210,9 @@ export async function ingestFromGooglePhotos(
         const fileData = await downloadMediaItem(accessToken, image.mediaFile.baseUrl);
 
         // Write to temporary file
-        const tempDir = await mkdtemp(`${tmpdir()}/slideshow-backend`);
         const ext = image.mediaFile.filename.substring(image.mediaFile.filename.lastIndexOf("."));
         const tempPath = `${tempDir}/${crypto.randomUUID()}${ext}`;
+        tempFiles.push(tempPath);
 
         await writeFile(tempPath, fileData);
 
@@ -220,6 +224,11 @@ export async function ingestFromGooglePhotos(
         });
 
         if (result.status === "staged") {
+          // Queueing for processing
+          runJob(result.sourceId).catch((err) => {
+            console.error(`Failed to trigger processing job for source ${result.sourceId}:`, err);
+          });
+
           return {
             id: image.id,
             status: "ingested",
@@ -242,6 +251,18 @@ export async function ingestFromGooglePhotos(
       }
     })
   );
+
+  Promise.all(
+    tempFiles.map(async (filePath) => {
+      try {
+        await unlink(filePath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    })
+  ).catch(() => {
+    // Ignore
+  });
 
   const results = {
     ingested: 0,

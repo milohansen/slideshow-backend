@@ -1,4 +1,5 @@
 import { JobsClient } from "@google-cloud/run";
+import { getSourcesByStatus } from "../db/helpers-firestore";
 
 type JobQueueConfig = {
   projectId?: string;
@@ -40,4 +41,13 @@ export async function runJob(targetId: string, config: JobQueueConfig = { projec
     console.error("[runJob] Error triggering job:", error);
     throw error;
   }
+}
+
+export async function runPendingJobs(config?: JobQueueConfig) {
+  const stagedSources = await getSourcesByStatus("staged");
+  await Promise.all(
+    stagedSources.map(async (source) => {
+      await runJob(source.id, config);
+    })
+  );
 }
