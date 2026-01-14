@@ -143,7 +143,7 @@ devices.get("/:deviceId/packed", async (c) => {
   try {
     const items: QueueItem[] = [];
     let i = 0;
-    while (i < count - 1) {
+    while (i < count) {
       const item = await getNextImage(deviceId);
       if (!item) {
         break;
