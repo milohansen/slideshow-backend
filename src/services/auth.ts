@@ -39,11 +39,11 @@ export async function storeSession(
   const encryptedAccessToken = encryptToken(accessToken);
   const encryptedRefreshToken = refreshToken ? encryptToken(refreshToken) : null;
   
-  const sessionId = crypto.randomUUID();
+  const initialSessionId = crypto.randomUUID();
   
   // Upsert session
-  await upsertAuthSession({
-    id: sessionId,
+  const actualSessionId =await upsertAuthSession({
+    id: initialSessionId,
     user_id: userId,
     email: email ?? undefined,
     name: name ?? undefined,
@@ -53,7 +53,7 @@ export async function storeSession(
     token_expiry: tokenExpiry,
   });
   
-  return sessionId;
+  return actualSessionId;
 }
 
 /**

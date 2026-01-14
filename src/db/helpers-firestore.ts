@@ -502,7 +502,7 @@ export async function getAuthSession(id: string): Promise<AuthSession | undefine
 /**
  * Create or update auth session
  */
-export async function upsertAuthSession(session: Omit<AuthSession, "created_at">): Promise<void> {
+export async function upsertAuthSession(session: Omit<AuthSession, "created_at">): Promise<string> {
   const db = getFirestore();
   
   // Check if session exists by user_id
@@ -514,6 +514,8 @@ export async function upsertAuthSession(session: Omit<AuthSession, "created_at">
     id,
     created_at: existing?.created_at || nowISO(),
   });
+
+  return id;
 }
 
 /**
