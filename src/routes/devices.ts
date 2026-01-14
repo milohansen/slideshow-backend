@@ -332,6 +332,8 @@ devices.post("/", async (c) => {
   const body = await c.req.json();
   const { id, name, width, height, orientation } = body;
   
+  return c.json({ success: true, deviceId: id });
+  
   if (!id || !name || !width || !height || !orientation) {
     return c.json({ error: "Missing required fields" }, 400);
   }
