@@ -72,6 +72,6 @@ async function registerDevices() {
   allDevices.forEach(d => console.log(`  - ${d.id}: ${d.name} (${d.width}x${d.height} ${d.orientation})`));
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
-  await registerDevices();
-}
+// if (import.meta.url === `file://${process.argv[1]}`) {
+//   await registerDevices();
+// }

@@ -52,7 +52,7 @@ function calculatePaletteSimilarity(palette1: ColorPalette, palette2: ColorPalet
 //   pairedFilePath?: string;
 // };
 
-type QueueItem = {
+export type QueueItem = {
   layoutType: "monotych" | "diptych" | "triptych";
   images: {
     url: string;
@@ -61,7 +61,7 @@ type QueueItem = {
   }[];
 };
 
-type SlideshowQueue = {
+export type SlideshowQueue = {
   deviceId: string;
   queue: QueueItem[];
   currentIndex: number;

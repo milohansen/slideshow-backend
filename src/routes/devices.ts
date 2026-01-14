@@ -9,7 +9,7 @@ import {
   getBlob,
   getDeviceVariant,
 } from "../db/helpers-firestore.ts";
-import { generateSlideshowQueue, getNextImage, loadQueueState } from "../services/slideshow-queue.ts";
+import { generateSlideshowQueue, getNextImage, loadQueueState, type QueueItem, type SlideshowQueue } from "../services/slideshow-queue.ts";
 import { isGCSEnabled, parseGCSUri, createReadStream } from "../services/storage.ts";
 
 const devices = new Hono();
@@ -83,7 +83,7 @@ devices.get("/:deviceId/slideshow", async (c) => {
   const regenerate = c.req.query("regenerate") === "true";
   
   try {
-    let queue;
+    let queue: SlideshowQueue;
     
     if (regenerate) {
       // Generate fresh queue
@@ -131,6 +131,36 @@ devices.get("/:deviceId/next-packed", async (c) => {
     }
     
     return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+devices.get("/:deviceId/packed", async (c) => {
+  const deviceId = c.req.param("deviceId");
+  const countParam = c.req.query("count");
+  const count = countParam ? parseInt(countParam, 10) : 1;
+  
+  try {
+    const items: QueueItem[] = [];
+    let i = 0;
+    while (i < count - 1) {
+      const item = await getNextImage(deviceId);
+      if (!item) {
+        break;
+      }
+      items.push(item);
+      i++;
+    }
+
+    const packedItems = items.map(item => [item.images.map(img => [img.url, img.source_color].filter(Boolean))]);
+    return c.json(packedItems);
+    
+    // const item = await getNextImage(deviceId);
+    // if (!item) {
+    //   return c.json({ error: "No images available" }, 404);
+    // }
+    
+    // return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 500);
   }
