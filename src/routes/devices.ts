@@ -119,6 +119,23 @@ devices.get("/:deviceId/next", async (c) => {
   }
 });
 
+// Get next image in packed format for device
+devices.get("/:deviceId/next-packed", async (c) => {
+  const deviceId = c.req.param("deviceId");
+  
+  try {
+    const item = await getNextImage(deviceId);
+    
+    if (!item) {
+      return c.json({ error: "No images available" }, 404);
+    }
+    
+    return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+});
+
 // Get processed image for device (LEGACY - returns JPEG)
 devices.get("/:deviceId/images/:imageId", async (c) => {
   const deviceId = c.req.param("deviceId");

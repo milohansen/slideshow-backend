@@ -174,7 +174,7 @@ export async function generateSlideshowQueue(deviceId: string, queueSize = 100):
 
     let imagesSelected: DeviceVariant[] = [];
     const shuffledCandidates = shuffleArray(candidates);
-    
+
     // Select images for this layout
     for (const candidate of shuffledCandidates) {
       if (imagesSelected.length >= imagesNeeded) {
@@ -192,13 +192,16 @@ export async function generateSlideshowQueue(deviceId: string, queueSize = 100):
     // Add selected images to queue
     queue.push({
       layoutType: layout as "monotych" | "diptych" | "triptych",
-      images: imagesSelected.map((img) => ({
-        url: img.storage_path.replace(/^gs:\/\//, "https://storage.googleapis.com/"),
-        // source_color: img.source_color,
-        // color_palette: img.color_palette,
-        blob_hash: img.blob_hash,
-      })),
-    })
+      images: imagesSelected.map((img) => {
+        const blob = blobMap.get(img.blob_hash);
+        return {
+          url: img.storage_path.replace(/^gs:\/\//, "https://storage.googleapis.com/"),
+          source_color: blob.color_source,
+          // color_palette: img.color_palette,
+          // blob_hash: img.blob_hash,
+        };
+      }),
+    });
 
     i++;
   }
