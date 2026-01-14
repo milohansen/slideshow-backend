@@ -19,49 +19,50 @@ const devices = new Hono();
  * POST /api/devices/register
  */
 devices.post("/register", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { id, name, width, height, orientation, capabilities, version } = body;
+  return c.text("Device Registration Endpoint");
+  // try {
+  //   const body = await c.req.json();
+  //   const { id, name, width, height, orientation, capabilities, version } = body;
 
-    if (!id || !name || !width || !height || !orientation) {
-      return c.json({
-        error: "Missing required fields: id, name, width, height, orientation"
-      }, 400);
-    }
+  //   if (!id || !name || !width || !height || !orientation) {
+  //     return c.json({
+  //       error: "Missing required fields: id, name, width, height, orientation"
+  //     }, 400);
+  //   }
     
-    // Upsert device
-    await upsertDevice({
-      id,
-      name,
-      width,
-      height,
-      orientation,
-      capabilities: capabilities ? JSON.stringify(capabilities) : undefined,
-      version,
-      gap: 0,
-      created_at: new Date().toISOString(),
-      last_seen: new Date().toISOString(),
-    });
+  //   // Upsert device
+  //   await upsertDevice({
+  //     id,
+  //     name,
+  //     width,
+  //     height,
+  //     orientation,
+  //     capabilities: capabilities ? JSON.stringify(capabilities) : undefined,
+  //     version,
+  //     gap: 0,
+  //     created_at: new Date().toISOString(),
+  //     last_seen: new Date().toISOString(),
+  //   });
 
-    console.log(`📱 Device registered: ${name} (${width}x${height} ${orientation})`);
+  //   console.log(`📱 Device registered: ${name} (${width}x${height} ${orientation})`);
 
-    // Check if variants exist for this dimension
-    // Note: This requires a query across all device_variants - could be expensive
-    // For now, we'll assume backfill is needed if device is new
-    const needsBackfill = false; // TODO: Implement proper check
+  //   // Check if variants exist for this dimension
+  //   // Note: This requires a query across all device_variants - could be expensive
+  //   // For now, we'll assume backfill is needed if device is new
+  //   const needsBackfill = false; // TODO: Implement proper check
 
-    return c.json({
-      success: true,
-      deviceId: id,
-      needsBackfill,
-      message: needsBackfill 
-        ? "Device registered. Image variants will be generated." 
-        : "Device registered successfully"
-    });
-  } catch (error: any) {
-    console.error("Error registering device:", error);
-    return c.json({ error: error.message }, 500);
-  }
+  //   return c.json({
+  //     success: true,
+  //     deviceId: id,
+  //     needsBackfill,
+  //     message: needsBackfill 
+  //       ? "Device registered. Image variants will be generated." 
+  //       : "Device registered successfully"
+  //   });
+  // } catch (error: any) {
+  //   console.error("Error registering device:", error);
+  //   return c.json({ error: error.message }, 500);
+  // }
 });
 
 // Get device info
@@ -119,22 +120,6 @@ devices.get("/:deviceId/next", async (c) => {
   }
 });
 
-// Get next image in packed format for device
-devices.get("/:deviceId/next-packed", async (c) => {
-  const deviceId = c.req.param("deviceId");
-  
-  try {
-    const item = await getNextImage(deviceId);
-    
-    if (!item) {
-      return c.json({ error: "No images available" }, 404);
-    }
-    
-    return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
-  } catch (error) {
-    return c.json({ error: (error as Error).message }, 500);
-  }
-});
 devices.get("/:deviceId/packed", async (c) => {
   const deviceId = c.req.param("deviceId");
   const countParam = c.req.query("count");
@@ -153,7 +138,51 @@ devices.get("/:deviceId/packed", async (c) => {
     }
 
     const packedItems = items.map(item => [item.images.map(img => [img.url, img.source_color].filter(Boolean))]);
+    console.log("Packed Items:", packedItems);
     return c.json(packedItems);
+    
+    // const item = await getNextImage(deviceId);
+    // if (!item) {
+    //   return c.json({ error: "No images available" }, 404);
+    // }
+    
+    // return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
+  } catch (error) {
+    return c.json({ error: (error as Error).message }, 500);
+  }
+
+});
+devices.get("/:deviceId/packed-str", async (c) => {
+  const deviceId = c.req.param("deviceId");
+  const countParam = c.req.query("count");
+  const count = countParam ? parseInt(countParam, 10) : 1;
+  
+  try {
+    const items: QueueItem[] = [];
+    let i = 0;
+    while (i < count) {
+      const item = await getNextImage(deviceId);
+      if (!item) {
+        break;
+      }
+      items.push(item);
+      i++;
+    }
+
+    let str = "";
+    for (const item of items) {
+      const parts: string[] = [];
+      for (const img of item.images) {
+        const imgParts = [img.url];
+        if (img.source_color) {
+          imgParts.push(img.source_color);
+        }
+        parts.push(imgParts.join(","));
+      }
+      str += parts.join("|") + ";";
+    }
+
+    return c.text(str);
     
     // const item = await getNextImage(deviceId);
     // if (!item) {
