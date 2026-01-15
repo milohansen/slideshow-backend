@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import adminRoutes from "./admin.ts";
 import deviceRoutes from "./devices.ts";
 import processingRoutes from "./processing.ts";
-import { Collections, getFirestore } from "../db/firestore.ts";
 
 const api = new Hono();
 

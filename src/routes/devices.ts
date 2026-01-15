@@ -137,7 +137,7 @@ devices.get("/:deviceId/packed", async (c) => {
       i++;
     }
 
-    const packedItems = items.map(item => [item.images.map(img => [img.url, img.source_color].filter(Boolean))]);
+    const packedItems = items.map(item => item.images.map(img => [img.url, img.source_color].filter(Boolean)));
     console.log("Packed Items:", packedItems);
     return c.json(packedItems);
     
@@ -152,6 +152,7 @@ devices.get("/:deviceId/packed", async (c) => {
   }
 
 });
+
 devices.get("/:deviceId/packed-str", async (c) => {
   const deviceId = c.req.param("deviceId");
   const countParam = c.req.query("count");
