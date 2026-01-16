@@ -1,0 +1,49 @@
+{
+  "sdkHttpResponse": {
+    "headers": {
+      "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "content-encoding": "gzip",
+      "content-type": "application/json; charset=UTF-8",
+      "date": "Fri, 16 Jan 2026 22:12:16 GMT",
+      "server": "scaffolding on HTTPServer2",
+      "server-timing": "gfet4t7; dur=13267",
+      "transfer-encoding": "chunked",
+      "vary": "Origin, X-Origin, Referer",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "SAMEORIGIN",
+      "x-xss-protection": "0"
+    }
+  },
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "{\n  \"title\": \"Woman Sitting by Ivy Wall\",\n  \"description\": \"A woman wearing sunglasses, a patterned jacket, and a red scarf sits centered on a low stone bench against a crumbling white wall covered by dark green ivy.\",\n  \"focal_points\": [\n    {\n      \"label\": \"Woman\",\n      \"score\": 10.0,\n      \"box_2d\": [0.34, 0.34, 0.34, 0.56]\n    }\n  ]\n}"
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "modelVersion": "gemini-2.5-flash-lite-preview-09-2025",
+  "responseId": "wLdqaar7MeC8_uMPupzZgAk",
+  "usageMetadata": {
+    "promptTokenCount": 619,
+    "candidatesTokenCount": 121,
+    "totalTokenCount": 742,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 361
+      },
+      {
+        "modality": "IMAGE",
+        "tokenCount": 258
+      }
+    ],
+    "thoughtsTokenCount": 2
+  }
+}

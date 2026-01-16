@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { Collections, getFirestore } from "../db/firestore.ts";
 import { createBlob, createDeviceVariant, updateSource } from "../db/helpers-firestore.ts";
+import { generateImageAnalysis } from "../services/ai.ts";
 
 const processing = new Hono();
 
@@ -98,6 +99,10 @@ processing.post("/:imageId/complete", async (c) => {
     exif_data: result.blobData!.exif_data,
     color_source: result.colorData?.source,
     color_palette: result.colorData?.palette
+  });
+
+  generateImageAnalysis(result.blobHash!, result.blobData!.storage_path.replace("gs://", "https://storage.googleapis.com/")).catch((error) => {
+    console.error(`[Processing] Failed to generate image analysis for blob ${result.blobHash}:`, error);
   });
 
   await Promise.allSettled(result.variants.map(async (variant) => {

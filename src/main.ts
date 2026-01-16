@@ -11,6 +11,8 @@ import authRoutes from "./routes/auth.ts";
 import uiRoutes from "./routes/ui.tsx";
 import { initStorage } from "./services/storage.ts";
 import { runPendingJobs } from "./services/jobs.ts";
+import { analyzeAllUnanalyzedImages } from "./services/ai.ts";
+import { cleanDuplicateDeviceVariants } from "./db/helpers-firestore.ts";
 
 const app = new Hono();
 
@@ -38,6 +40,10 @@ try {
   process.exit(1);
 }
 
+analyzeAllUnanalyzedImages().catch((error) => {
+  console.error("🔥 Failed to analyze unanalyzed images on startup:", error);
+});
+
 // Health check endpoint for Cloud Run
 app.get("/_health", (c) => {
   return c.json({
@@ -49,9 +55,7 @@ app.get("/_health", (c) => {
 // Routes
 app.route("/auth", authRoutes);
 
-
 app.route("/api", apiRoutes);
-
 
 // Public UI routes (with optional auth for better UX)
 // app.use("/ui/*", optionalAuth);

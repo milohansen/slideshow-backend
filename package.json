@@ -18,6 +18,7 @@
     "@google-cloud/run": "^3.1.0",
     "@google-cloud/storage": "7.18.0",
     "@google-cloud/tasks": "6.2.1",
+    "@google/genai": "^1.37.0",
     "@grpc/grpc-js": "^1.14.3",
     "@grpc/proto-loader": "^0.8.0",
     "@hono/node-server": "^1.19.8",
@@ -26,9 +27,11 @@
     "@std/crypto": "jsr:@std/crypto@^1.0.5",
     "@std/encoding": "jsr:@std/encoding@^1.0.10",
     "@std/fs": "jsr:@std/fs@^1.0.21",
+    "@std/msgpack": "jsr:^1.0.3",
     "@std/path": "jsr:@std/path@^1.1.4",
     "arctic": "^3.7.0",
     "hono": "^4.11.3",
+    "mime": "^4.1.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

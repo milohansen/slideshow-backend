@@ -7,6 +7,7 @@ import {
   countSourcesByStatus,
   deleteBlob,
   deleteSource,
+  getBlob,
   getSource,
   getSourcesForBlob,
 } from "../db/helpers-firestore.ts";
@@ -15,6 +16,7 @@ import { stageImageForProcessing } from "../services/image-ingestion-v2.ts";
 import { runJob } from "../services/jobs.ts";
 import { deleteFile } from "../services/storage.ts";
 import photosRoutes from "./photos.ts";
+import { generateImageAnalysis } from "../services/ai.ts";
 
 const admin = new Hono();
 
@@ -118,6 +120,28 @@ admin.post("/upload", async (c) => {
 });
 
 // Delete single image endpoint
+admin.post("/images/analyze/:id", async (c) => {
+  const imageId = c.req.param("id"); // Could be source_id or blob_hash
+  
+  const db = getFirestore();
+  
+  console.log(`[Admin] Analyzing image: ${imageId}`);
+
+  const blob = await getBlob(imageId);
+
+  if (!blob) {
+    return c.json({ error: "Blob not found" }, 404);
+  }
+
+  try {
+    const analysis = await generateImageAnalysis(imageId, blob.storage_path.replace("gs://", "https://storage.googleapis.com/"));
+    return c.json({ success: true, analysis });
+  } catch (error) {
+    console.error(`[Admin] Failed to analyze image ${imageId}:`, error);
+    return c.json({ error: error instanceof Error ? error.message : "Unknown error" }, 500);
+  }
+});
+
 admin.delete("/images/:id", async (c) => {
   const imageId = c.req.param("id"); // Could be source_id or blob_hash
   const db = getFirestore();

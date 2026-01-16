@@ -192,6 +192,7 @@ ui.get("/images/:hash", async (c) => {
     const variants = await getDeviceVariantsForBlob(blobHash);
 
     const imageData = {
+      ...data,
       id: blobHash,
       file_path: data.storage_path,
       width: data.width,

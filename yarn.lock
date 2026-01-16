@@ -274,6 +274,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@google/genai@npm:^1.37.0":
+  version: 1.37.0
+  resolution: "@google/genai@npm:1.37.0"
+  dependencies:
+    google-auth-library: "npm:^10.3.0"
+    protobufjs: "npm:^7.5.4"
+    ws: "npm:^8.18.0"
+  peerDependencies:
+    "@modelcontextprotocol/sdk": ^1.25.2
+  peerDependenciesMeta:
+    "@modelcontextprotocol/sdk":
+      optional: true
+  checksum: 10c0/4f7c18e575ed25c3f1fbc38f3fb72dbb610ca419280253ba08ba6cc3c8190ecc76cc0580b21a2457deb60b5c6ad5be184fd0d8907281490ef6e184a5dd2b38bb
+  languageName: node
+  linkType: hard
+
 "@grpc/grpc-js@npm:^1.12.6, @grpc/grpc-js@npm:^1.14.3":
   version: 1.14.3
   resolution: "@grpc/grpc-js@npm:1.14.3"
@@ -580,6 +596,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@jsr/std__bytes@npm:^1.0.5":
+  version: 1.0.6
+  resolution: "@jsr/std__bytes@npm:1.0.6::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__bytes%2F1.0.6.tgz"
+  checksum: 10c0/25b9b4e83e96c50460ce6d02b43045dcc3419b70e8a5aeccff892d4350d000a322b3bedaa2d71922967b9a30fd1869b41e2f8cf0092ff6f2cd4da8d2a4bb5dbf
+  languageName: node
+  linkType: hard
+
 "@jsr/std__internal@npm:^1.0.12":
   version: 1.0.12
   resolution: "@jsr/std__internal@npm:1.0.12::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__internal%2F1.0.12.tgz"
@@ -824,6 +847,24 @@ __metadata:
     "@jsr/std__internal": "npm:^1.0.12"
     "@jsr/std__path": "npm:^1.1.4"
   checksum: 10c0/4db898677aeecd41085608a71e1a5c65194c08e97d92c2b25bab01e9b772b47709db2abac868cebba7e840ea84117db55e53f298c1e077d1894a05947021ba09
+  languageName: node
+  linkType: hard
+
+"@std/msgpack@jsr:^1.0.3":
+  version: 1.0.3
+  resolution: "@std/msgpack@jsr:1.0.3::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__msgpack%2F1.0.3.tgz"
+  dependencies:
+    "@jsr/std__bytes": "npm:^1.0.5"
+  checksum: 10c0/0f400adbd556653002dc350cfeb06f54d4094449601571be6857e7113048c67a17223808588e2fe770441d7fad34debe8bdd09b29a626e5cb66a66fa37b55d7d
+  languageName: node
+  linkType: hard
+
+"@std/msgpack@npm:@jsr/std__msgpack@^1.0.3":
+  version: 1.0.3
+  resolution: "@jsr/std__msgpack@npm:1.0.3::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__msgpack%2F1.0.3.tgz"
+  dependencies:
+    "@jsr/std__bytes": "npm:^1.0.5"
+  checksum: 10c0/0f400adbd556653002dc350cfeb06f54d4094449601571be6857e7113048c67a17223808588e2fe770441d7fad34debe8bdd09b29a626e5cb66a66fa37b55d7d
   languageName: node
   linkType: hard
 
@@ -1630,7 +1671,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"google-auth-library@npm:^10.1.0":
+"google-auth-library@npm:^10.1.0, google-auth-library@npm:^10.3.0":
   version: 10.5.0
   resolution: "google-auth-library@npm:10.5.0"
   dependencies:
@@ -1993,6 +2034,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mime@npm:^4.1.0":
+  version: 4.1.0
+  resolution: "mime@npm:4.1.0"
+  bin:
+    mime: bin/cli.js
+  checksum: 10c0/3b8602e50dff1049aea8bb2d4c65afc55bf7f3eb5c17fd2bcb315b8c8ae225a7553297d424d3621757c24cdba99e930ecdc4108467009cdc7ed55614cd55031d
+  languageName: node
+  linkType: hard
+
 "minimatch@npm:^10.1.1":
   version: 10.1.1
   resolution: "minimatch@npm:10.1.1"
@@ -2263,7 +2313,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"protobufjs@npm:^7.4.0, protobufjs@npm:^7.5.3":
+"protobufjs@npm:^7.4.0, protobufjs@npm:^7.5.3, protobufjs@npm:^7.5.4":
   version: 7.5.4
   resolution: "protobufjs@npm:7.5.4"
   dependencies:
@@ -2492,6 +2542,7 @@ __metadata:
     "@google-cloud/run": "npm:^3.1.0"
     "@google-cloud/storage": "npm:7.18.0"
     "@google-cloud/tasks": "npm:6.2.1"
+    "@google/genai": "npm:^1.37.0"
     "@grpc/grpc-js": "npm:^1.14.3"
     "@grpc/proto-loader": "npm:^0.8.0"
     "@hono/node-server": "npm:^1.19.8"
@@ -2500,10 +2551,12 @@ __metadata:
     "@std/crypto": "jsr:@std/crypto@^1.0.5"
     "@std/encoding": "jsr:@std/encoding@^1.0.10"
     "@std/fs": "jsr:@std/fs@^1.0.21"
+    "@std/msgpack": "jsr:^1.0.3"
     "@std/path": "jsr:@std/path@^1.1.4"
     "@types/node": "npm:^24.0.0"
     arctic: "npm:^3.7.0"
     hono: "npm:^4.11.3"
+    mime: "npm:^4.1.0"
     sharp: "npm:^0.34.5"
     tsx: "npm:^4.21.0"
     typescript: "npm:^5.9.0"
@@ -2846,6 +2899,21 @@ __metadata:
   version: 1.0.2
   resolution: "wrappy@npm:1.0.2"
   checksum: 10c0/56fece1a4018c6a6c8e28fbc88c87e0fbf4ea8fd64fc6c63b18f4acc4bd13e0ad2515189786dd2c30d3eec9663d70f4ecf699330002f8ccb547e4a18231fc9f0
+  languageName: node
+  linkType: hard
+
+"ws@npm:^8.18.0":
+  version: 8.19.0
+  resolution: "ws@npm:8.19.0"
+  peerDependencies:
+    bufferutil: ^4.0.1
+    utf-8-validate: ">=5.0.2"
+  peerDependenciesMeta:
+    bufferutil:
+      optional: true
+    utf-8-validate:
+      optional: true
+  checksum: 10c0/4741d9b9bc3f9c791880882414f96e36b8b254e34d4b503279d6400d9a4b87a033834856dbdd94ee4b637944df17ea8afc4bce0ff4a1560d2166be8855da5b04
   languageName: node
   linkType: hard
 

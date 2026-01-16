@@ -111,15 +111,38 @@ export const Image: FC<ImageProps> = ({ image, error }) => {
               <td>
                 {image.colors ? (
                   <div class="color-palette">
-                    <span class="color-swatch" style={`background-color: ${image.colors.primary}`} title={`Primary: ${image.colors.primary}`}></span>
-                    <span class="color-swatch" style={`background-color: ${image.colors.secondary}`} title={`Secondary: ${image.colors.secondary}`}></span>
-                    <span class="color-swatch" style={`background-color: ${image.colors.tertiary}`} title={`Tertiary: ${image.colors.tertiary}`}></span>
+                    <span
+                      class="color-swatch"
+                      style={`background-color: ${image.colors.primary}`}
+                      title={`0: ${image.colors.primary}`}
+                      data-color-hex={image.colors.primary}
+                    ></span>
+                    <span
+                      class="color-swatch"
+                      style={`background-color: ${image.colors.secondary}`}
+                      title={`1: ${image.colors.secondary}`}
+                      data-color-hex={image.colors.secondary}
+                    ></span>
+                    <span
+                      class="color-swatch"
+                      style={`background-color: ${image.colors.tertiary}`}
+                      title={`2: ${image.colors.tertiary}`}
+                      data-color-hex={image.colors.tertiary}
+                    ></span>
                   </div>
                 ) : (
                   <span style="color: #999;">Not processed yet</span>
                 )}
               </td>
               <td>
+                <button
+                  class="analyze-image-btn btn-small"
+                  data-image-id={image.id}
+                  style="padding: 0.25rem 0.5rem; font-size: 0.85rem; background-color: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                  title="Analyze this image"
+                >
+                  ✨
+                </button>
                 <button
                   class="delete-image-btn btn-small"
                   data-image-id={image.id}
@@ -136,11 +159,15 @@ export const Image: FC<ImageProps> = ({ image, error }) => {
 
       {Object.entries(variantsByDevice).map(([device, variants]) => (
         <div class="card">
-          <h2>Variants for {device} ({variants.length})</h2>
+          <h2>
+            Variants for {device} ({variants.length})
+          </h2>
           <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
             {variants.map((variant) => (
               <div style="flex: 1 1 300px; min-width: 200px;">
-                <h3>Dimensions: {variant.width} × {variant.height}</h3>
+                <h3>
+                  Dimensions: {variant.width} × {variant.height}
+                </h3>
                 <h3>Layout Type: {variant.layout_type}</h3>
                 <img
                   src={variant.storage_path.replace(/^gs:\/\//, "https://storage.googleapis.com/")}
@@ -148,9 +175,7 @@ export const Image: FC<ImageProps> = ({ image, error }) => {
                   style="max-width: 100%; height: auto; border-radius: 4px;"
                   onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
                 />
-                <div style="display: none; color: #999; font-size: 0.9rem; margin-top: 0.5rem;">
-                  Variant image not available.
-                </div>
+                <div style="display: none; color: #999; font-size: 0.9rem; margin-top: 0.5rem;">Variant image not available.</div>
               </div>
             ))}
           </div>
