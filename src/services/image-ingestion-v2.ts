@@ -9,12 +9,12 @@ import { encodeHex } from "@std/encoding/hex";
 import { ensureDir } from "@std/fs";
 import { join } from "@std/path";
 import { readdirSync, renameSync, statSync, unlinkSync } from "fs";
-import { mkdtemp, readFile, writeFile, rmdir, unlink } from "fs/promises";
+import { mkdtemp, readFile, unlink, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { createSource } from "../db/helpers-firestore.ts";
+import { createSource, hasExistingSource } from "../db/helpers-firestore.ts";
 import { downloadMediaItem, type PickedMediaItem } from "./google-photos.ts";
-import { isGCSEnabled, uploadFile } from "./storage.ts";
 import { runJob } from "./jobs.ts";
+import { isGCSEnabled, uploadFile } from "./storage.ts";
 
 export type StagedImageInput = {
   localPath: string;
@@ -201,13 +201,20 @@ export async function ingestFromGooglePhotos(
   images: PickedMediaItem[] // PickedMediaItem array from google-photos service
 ): Promise<{ ingested: number; skipped: number; failed: number; details: Array<{ id: string; status: string; message?: string }> }> {
   const tempDir = await mkdtemp(`${tmpdir()}/slideshow-backend`);
-  const tempFiles : string[] = [];
+  const tempFiles: string[] = [];
 
   const details = await Promise.all(
     images.map(async (image) => {
       try {
-        // save the original to GCS staging and create source record
-        const fileData = await downloadMediaItem(accessToken, image.mediaFile.baseUrl);
+        const [exists, fileData] = await Promise.all([hasExistingSource(image.id), downloadMediaItem(accessToken, image.mediaFile.baseUrl)]);
+
+        if (exists) {
+          return {
+            id: image.id,
+            status: "skipped",
+            message: "Image already exists (duplicate)",
+          };
+        }
 
         // Write to temporary file
         const ext = image.mediaFile.filename.substring(image.mediaFile.filename.lastIndexOf("."));

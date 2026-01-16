@@ -188,6 +188,15 @@ export async function getSourcesForBlob(blobHash: string): Promise<Source[]> {
   return snapshot.docs.map(doc => doc.data() as Source);
 }
 
+export async function hasExistingSource(externalId: string): Promise<boolean> {
+  const db = getFirestore();
+  const snapshot = await db.collection(Collections.SOURCES)
+    .where("external_id", "==", externalId)
+    .get();
+  
+  return snapshot.docs.length > 0;
+}
+
 /**
  * Get sources ready for processing (staged status)
  */
