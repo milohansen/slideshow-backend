@@ -1,14 +1,6 @@
 import { Hono } from "hono";
 import { createReadStream as fsCreateReadStream } from "fs";
-import { 
-  getDevice,
-  upsertDevice,
-  updateDeviceLastSeen,
-  deleteDevice,
-  getSource,
-  getBlob,
-  getDeviceVariant,
-} from "../db/helpers-firestore.ts";
+import { getDevice, upsertDevice, updateDeviceLastSeen, deleteDevice, getSource, getBlob, getDeviceVariant } from "../db/helpers-firestore.ts";
 import { generateSlideshowQueue, getNextImage, loadQueueState, type QueueItem, type SlideshowQueue } from "../services/slideshow-queue.ts";
 import { isGCSEnabled, parseGCSUri, createReadStream } from "../services/storage.ts";
 
@@ -29,7 +21,7 @@ devices.post("/register", async (c) => {
   //       error: "Missing required fields: id, name, width, height, orientation"
   //     }, 400);
   //   }
-    
+
   //   // Upsert device
   //   await upsertDevice({
   //     id,
@@ -55,8 +47,8 @@ devices.post("/register", async (c) => {
   //     success: true,
   //     deviceId: id,
   //     needsBackfill,
-  //     message: needsBackfill 
-  //       ? "Device registered. Image variants will be generated." 
+  //     message: needsBackfill
+  //       ? "Device registered. Image variants will be generated."
   //       : "Device registered successfully"
   //   });
   // } catch (error: any) {
@@ -68,13 +60,13 @@ devices.post("/register", async (c) => {
 // Get device info
 devices.get("/:deviceId", async (c) => {
   const deviceId = c.req.param("deviceId");
-  
+
   const device = await getDevice(deviceId);
-  
+
   if (!device) {
     return c.json({ error: "Device not found" }, 404);
   }
-  
+
   return c.json(device);
 });
 
@@ -82,10 +74,10 @@ devices.get("/:deviceId", async (c) => {
 devices.get("/:deviceId/slideshow", async (c) => {
   const deviceId = c.req.param("deviceId");
   const regenerate = c.req.query("regenerate") === "true";
-  
+
   try {
     let queue: SlideshowQueue;
-    
+
     if (regenerate) {
       // Generate fresh queue
       queue = await generateSlideshowQueue(deviceId, 10);
@@ -96,7 +88,7 @@ devices.get("/:deviceId/slideshow", async (c) => {
         queue = await generateSlideshowQueue(deviceId, 10);
       }
     }
-    
+
     return c.json(queue);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 404);
@@ -106,14 +98,14 @@ devices.get("/:deviceId/slideshow", async (c) => {
 // Get next image in slideshow
 devices.get("/:deviceId/next", async (c) => {
   const deviceId = c.req.param("deviceId");
-  
+
   try {
     const item = await getNextImage(deviceId);
-    
+
     if (!item) {
       return c.json({ error: "No images available" }, 404);
     }
-    
+
     return c.json(item);
   } catch (error) {
     return c.json({ error: (error as Error).message }, 500);
@@ -124,40 +116,43 @@ devices.get("/:deviceId/packed", async (c) => {
   const deviceId = c.req.param("deviceId");
   const countParam = c.req.query("count");
   const count = countParam ? parseInt(countParam, 10) : 1;
-  
+  const isNewParam = c.req.query("is_new");
+  const isNew = isNewParam === "true";
+
   try {
-    const items: QueueItem[] = [];
-    let i = 0;
-    while (i < count) {
-      const item = await getNextImage(deviceId);
-      if (!item) {
-        break;
+    let items: QueueItem[] = [];
+    if (isNew) {
+      // Update last seen timestamp
+      updateDeviceLastSeen(deviceId).catch((err) => {
+        console.error("Failed to update device last seen:", err);
+      });
+      items = (await generateSlideshowQueue(deviceId, count)).queue;
+    } else {
+      let i = 0;
+      while (i < count) {
+        const item = await getNextImage(deviceId);
+        if (!item) {
+          break;
+        }
+        items.push(item);
+        i++;
       }
-      items.push(item);
-      i++;
     }
 
-    const packedItems = items.map(item => item.images.map(img => [img.url, img.source_color].filter(Boolean)));
-    console.log("Packed Items:", packedItems);
+    // const packedItems = items.map(item => item.images.map(img => [img.url, img.source_color].filter(Boolean)));
+    const packedItems = items.map((item) => [item.images.length > 1 ? item.images.map((img) => img.url) : item.images[0].url, item.images[0].source_color].filter(Boolean));
+    // console.log("Packed Items:", packedItems);
     return c.json(packedItems);
-    
-    // const item = await getNextImage(deviceId);
-    // if (!item) {
-    //   return c.json({ error: "No images available" }, 404);
-    // }
-    
-    // return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 500);
   }
-
 });
 
 devices.get("/:deviceId/packed-str", async (c) => {
   const deviceId = c.req.param("deviceId");
   const countParam = c.req.query("count");
   const count = countParam ? parseInt(countParam, 10) : 1;
-  
+
   try {
     const items: QueueItem[] = [];
     let i = 0;
@@ -184,12 +179,12 @@ devices.get("/:deviceId/packed-str", async (c) => {
     }
 
     return c.text(str);
-    
+
     // const item = await getNextImage(deviceId);
     // if (!item) {
     //   return c.json({ error: "No images available" }, 404);
     // }
-    
+
     // return c.json({ l: item.layoutType, i: item.images.map(img => [img.url, img.source_color]) });
   } catch (error) {
     return c.json({ error: (error as Error).message }, 500);
@@ -200,48 +195,48 @@ devices.get("/:deviceId/packed-str", async (c) => {
 devices.get("/:deviceId/images/:imageId", async (c) => {
   const deviceId = c.req.param("deviceId");
   const imageId = c.req.param("imageId");
-  
+
   try {
     // Get device info to determine size
     const device = await getDevice(deviceId);
-    
+
     if (!device) {
       return c.json({ error: "Device not found" }, 404);
     }
-    
+
     // Try new schema first (device_variants + blobs)
     let filePath: string | undefined;
-    
+
     // First check if imageId is actually a source ID
     const source = await getSource(imageId);
     const blobHash = source?.blob_hash;
-    
+
     if (blobHash) {
       // Query device_variants by blob hash and device dimensions
       const variant = await getDeviceVariant(blobHash, device.width, device.height);
       filePath = variant?.storage_path;
     }
-    
+
     // TODO: Add fallback to legacy schema if needed
-    
+
     if (!filePath) {
       return c.json({ error: "Image not found" }, 404);
     }
-    
+
     // Check if file is in GCS or local
     if (filePath.startsWith("gs://")) {
       // Stream from Google Cloud Storage
       if (!isGCSEnabled()) {
         return c.json({ error: "GCS not configured" }, 500);
       }
-      
+
       const gcsInfo = parseGCSUri(filePath);
       if (!gcsInfo) {
         return c.json({ error: "Invalid GCS path" }, 500);
       }
-      
+
       const stream = createReadStream(gcsInfo.path);
-      
+
       return new Response(stream, {
         headers: {
           "Content-Type": "image/jpeg",
@@ -251,7 +246,7 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
     } else {
       // Stream from local filesystem
       const file = fsCreateReadStream(filePath);
-      
+
       return new Response(file as any, {
         headers: {
           "Content-Type": "image/jpeg",
@@ -272,39 +267,39 @@ devices.get("/:deviceId/images/:imageId", async (c) => {
 devices.get("/:deviceId/images/:imageId/metadata", async (c) => {
   const deviceId = c.req.param("deviceId");
   const imageId = c.req.param("imageId");
-  
+
   try {
     // Get device info
     const device = await getDevice(deviceId);
-    
+
     if (!device) {
       return c.json({ error: "Device not found" }, 404);
     }
-    
+
     // Get source and blob data
     const source = await getSource(imageId);
     if (!source?.blob_hash) {
       return c.json({ error: "Image not found" }, 404);
     }
-    
+
     const blob = await getBlob(source.blob_hash);
     if (!blob) {
       return c.json({ error: "Blob not found" }, 404);
     }
-    
+
     // Get device variant
     const variant = await getDeviceVariant(blob.hash, device.width, device.height);
-    
+
     if (!variant) {
       return c.json({ error: "Variant not found for device dimensions" }, 404);
     }
-    
+
     // Parse color palette
     const colors = blob.color_palette ? JSON.parse(blob.color_palette) : ["#4285F4"];
-    
+
     // Build image URL
     const imageUrl = `${c.req.url.replace(/\/metadata$/, "")}`;
-    
+
     return c.json({
       image_url: imageUrl,
       metadata: {
@@ -320,7 +315,7 @@ devices.get("/:deviceId/images/:imageId/metadata", async (c) => {
         source: blob.color_source || colors[0],
         palette: colors,
         is_dark: false, // TODO: Calculate from primary color luminance
-      }
+      },
     });
   } catch (error: any) {
     console.error("Error fetching image metadata:", error);
@@ -332,13 +327,13 @@ devices.get("/:deviceId/images/:imageId/metadata", async (c) => {
 devices.post("/", async (c) => {
   const body = await c.req.json();
   const { id, name, width, height, orientation } = body;
-  
+
   return c.json({ success: true, deviceId: id });
-  
+
   if (!id || !name || !width || !height || !orientation) {
     return c.json({ error: "Missing required fields" }, 400);
   }
-  
+
   await upsertDevice({
     id,
     name,
@@ -349,7 +344,7 @@ devices.post("/", async (c) => {
     created_at: new Date().toISOString(),
     last_seen: new Date().toISOString(),
   });
-  
+
   return c.json({ success: true, deviceId: id });
 });
 
@@ -358,17 +353,17 @@ devices.put("/:deviceId", async (c) => {
   const deviceId = c.req.param("deviceId");
   const body = await c.req.json();
   const { name, width, height, orientation } = body;
-  
+
   if (!name || !width || !height || !orientation) {
     return c.json({ error: "Missing required fields" }, 400);
   }
-  
+
   // Check if device exists
   const existing = await getDevice(deviceId);
   if (!existing) {
     return c.json({ error: "Device not found" }, 404);
   }
-  
+
   await upsertDevice({
     ...existing,
     name,
@@ -376,22 +371,22 @@ devices.put("/:deviceId", async (c) => {
     height,
     orientation,
   });
-  
+
   return c.json({ success: true, deviceId });
 });
 
 // Delete device
 devices.delete("/:deviceId", async (c) => {
   const deviceId = c.req.param("deviceId");
-  
+
   // Check if device exists
   const existing = await getDevice(deviceId);
   if (!existing) {
     return c.json({ error: "Device not found" }, 404);
   }
-  
+
   await deleteDevice(deviceId);
-  
+
   return c.json({ success: true });
 });
 

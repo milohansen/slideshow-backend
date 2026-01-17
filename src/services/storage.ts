@@ -5,7 +5,7 @@
 
 import { Storage } from "@google-cloud/storage";
 import type { UploadOptions } from "@google-cloud/storage";
-import { Readable } from 'node:stream';
+import { Readable } from "node:stream";
 
 let storage: Storage | null = null;
 let bucketName: string | null = null;
@@ -15,19 +15,17 @@ let bucketName: string | null = null;
  */
 export function initStorage() {
   bucketName = process.env.GCS_BUCKET_NAME ?? null;
-  
+
   if (!bucketName) {
     console.warn("⚠️  GCS_BUCKET_NAME not set, using local filesystem storage");
     return;
   }
-  
+
   try {
     // In Cloud Run, credentials are automatically provided via ADC
     // For local development, set GOOGLE_APPLICATION_CREDENTIALS env var
     storage = new Storage();
     console.log(`✅ Google Cloud Storage initialized (bucket: ${bucketName})`);
-
-    
   } catch (error) {
     console.error("Failed to initialize Google Cloud Storage:", error);
     storage = null;
@@ -44,18 +42,14 @@ export function isGCSEnabled(): boolean {
 /**
  * Upload a file to Google Cloud Storage
  */
-export async function uploadFile(
-  localPath: string,
-  gcsPath: string,
-  contentType?: string
-): Promise<string> {
+export async function uploadFile(localPath: string, gcsPath: string, contentType?: string): Promise<string> {
   if (!isGCSEnabled() || !storage || !bucketName) {
     throw new Error("Google Cloud Storage not initialized");
   }
 
   try {
     const bucket = storage.bucket(bucketName);
-    
+
     await bucket.upload(localPath, {
       destination: gcsPath,
       metadata: {
@@ -63,7 +57,7 @@ export async function uploadFile(
         cacheControl: "public, max-age=31536000",
       },
     } as unknown as UploadOptions);
-    
+
     // Return the GCS URI
     return `gs://${bucketName}/${gcsPath}`;
   } catch (error) {
@@ -75,10 +69,7 @@ export async function uploadFile(
 /**
  * Download a file from Google Cloud Storage to local temp file
  */
-export async function downloadFile(
-  gcsPath: string,
-  localPath: string
-): Promise<void> {
+export async function downloadFile(gcsPath: string, localPath: string): Promise<void> {
   if (!isGCSEnabled() || !storage || !bucketName) {
     throw new Error("Google Cloud Storage not initialized");
   }
@@ -86,8 +77,24 @@ export async function downloadFile(
   try {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(gcsPath);
-    
+
     await file.download({ destination: localPath });
+  } catch (error) {
+    console.error(`Failed to download ${gcsPath} from GCS:`, error);
+    throw error;
+  }
+}
+export async function fetchFile<T = unknown>(gcsPath: string): Promise<T> {
+  if (!isGCSEnabled() || !storage || !bucketName) {
+    throw new Error("Google Cloud Storage not initialized");
+  }
+
+  try {
+    const res = await fetch(`https://storage.googleapis.com/${bucketName}/${gcsPath}`);
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
+    }
+    return (await res.json()) as T;
   } catch (error) {
     console.error(`Failed to download ${gcsPath} from GCS:`, error);
     throw error;
@@ -97,10 +104,7 @@ export async function downloadFile(
 /**
  * Get a signed URL for temporary access to a file
  */
-export async function getSignedUrl(
-  gcsPath: string,
-  expiresInMinutes = 60
-): Promise<string> {
+export async function getSignedUrl(gcsPath: string, expiresInMinutes = 60): Promise<string> {
   if (!isGCSEnabled() || !storage || !bucketName) {
     throw new Error("Google Cloud Storage not initialized");
   }
@@ -108,13 +112,13 @@ export async function getSignedUrl(
   try {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(gcsPath);
-    
+
     const [url] = await file.getSignedUrl({
       version: "v4",
       action: "read",
       expires: Date.now() + expiresInMinutes * 60 * 1000,
     });
-    
+
     return url;
   } catch (error) {
     console.error(`Failed to get signed URL for ${gcsPath}:`, error);
@@ -133,7 +137,8 @@ export async function readFile(gcsPath: string): Promise<Uint8Array> {
   try {
     const bucket = storage.bucket(bucketName);
     const file = bucket.file(gcsPath);
-    
+    file.request;
+
     const [contents] = await file.download();
     return contents;
   } catch (error) {
@@ -153,23 +158,23 @@ export function createReadStream(gcsPath: string): ReadableStream<Uint8Array> {
 
   const bucket = storage.bucket(bucketName);
   const file = bucket.file(gcsPath);
-  
+
   // Create Node.js ReadableStream from GCS
   const nodeStream = file.createReadStream();
 
   return Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
-  
+
   // Convert Node.js stream to Web ReadableStream
   // return new ReadableStream({
   //   start(controller) {
   //     nodeStream.on("data", (chunk: Buffer) => {
   //       controller.enqueue(new Uint8Array(chunk));
   //     });
-      
+
   //     nodeStream.on("end", () => {
   //       controller.close();
   //     });
-      
+
   //     nodeStream.on("error", (error) => {
   //       console.error(`Stream error for ${gcsPath}:`, error);
   //       controller.error(error);
@@ -242,7 +247,5 @@ export function parseGCSUri(uri: string): { bucket: string; path: string } | nul
  */
 export function localPathToGCSPath(localPath: string): string {
   // Remove leading data/ or ./data/ and convert to GCS path
-  return localPath
-    .replace(/^\.?\/?(data\/)?/, "")
-    .replace(/\\/g, "/");
+  return localPath.replace(/^\.?\/?(data\/)?/, "").replace(/\\/g, "/");
 }

@@ -9,7 +9,7 @@ import { optionalAuth } from "./middleware/auth.ts";
 import apiRoutes from "./routes/api.ts";
 import authRoutes from "./routes/auth.ts";
 import uiRoutes from "./routes/ui.tsx";
-import { initStorage } from "./services/storage.ts";
+import { initStorage, fetchFile } from "./services/storage.ts";
 import { runPendingJobs } from "./services/jobs.ts";
 import { analyzeAllUnanalyzedImages } from "./services/ai.ts";
 import { cleanDuplicateDeviceVariants } from "./db/helpers-firestore.ts";

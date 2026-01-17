@@ -3,9 +3,12 @@
  * Generates infinite shuffled sequences with layout-aware variant selection
  */
 
+import { QuantizerCelebi, Score, hexFromArgb, argbFromHex } from "@material/material-color-utilities";
+
 import { getFirestore, Collections } from "../db/firestore.ts";
 import { getDevice, getDeviceQueueState, updateDeviceQueueState } from "../db/helpers-firestore.ts";
 import type { DeviceVariant } from "../db/types.ts";
+import { fetchFile } from "./storage.ts";
 
 type ColorPalette = {
   primary: string;
@@ -59,6 +62,7 @@ export type QueueItem = {
     source_color?: string;
     color_palette?: string[];
   }[];
+  source_color?: string;
 };
 
 export type SlideshowQueue = {
@@ -86,6 +90,13 @@ type Layouts = {
   triptych: boolean;
 };
 
+type QuantizedImage = {
+  hash: string;
+  timestamp: string;
+  colorCount: number;
+  colors: Record<string, number>;
+};
+
 /**
  * Generate slideshow queue for a device with layout-aware variant selection
  */
@@ -104,10 +115,10 @@ export async function generateSlideshowQueue(deviceId: string, queueSize = 100):
     ? JSON.parse(device.layouts)
     : {
         monotych: true,
-        diptych: false,
+        diptych: true,
         triptych: false,
       };
-
+  console.log(`Generating slideshow queue for device ${deviceId} with layouts:`, layouts);
   // if (layouts.length === 0) {
   //   console.warn(`Device ${deviceId} has no layouts defined, falling back to legacy mode`);
   //   return generateLegacyQueue(deviceId, device, queueSize);
@@ -164,39 +175,76 @@ export async function generateSlideshowQueue(deviceId: string, queueSize = 100):
   let i = 0;
   while (i < queueSize) {
     // TODO: semi-randomly select a layout available for this device
-    const layout = "monotych";
-    const imagesNeeded = layout === "monotych" ? 1 : layout === "diptych" ? 2 : 3;
+    let layoutType: "monotych" | "diptych" | "triptych" = "monotych";
 
-    const candidates = variantsByLayout.get(layout) || [];
-    if (candidates.length < imagesNeeded) {
-      continue; // Not enough variants for this layout
+    if (i > 0) {
+      layoutType = Math.random() < 0.5 ? (layouts.diptych ? "diptych" : "monotych") : "monotych";
     }
 
-    let imagesSelected: DeviceVariant[] = [];
+    const imagesNeeded = layoutType === "monotych" ? 1 : layoutType === "diptych" ? 2 : 3;
+    
+    console.log(`Generating queue item ${i + 1}/${queueSize} for device ${deviceId} with layout ${layoutType}`, imagesNeeded);
+
+    const candidates = variantsByLayout.get(layoutType) || [];
+    if (candidates.length < imagesNeeded) {
+      console.warn(`Not enough variants for layout ${layoutType} on device ${deviceId}, needed ${imagesNeeded} but found ${candidates.length}`);
+      continue; // Not enough variants for this layout
+    }
     const shuffledCandidates = shuffleArray(candidates);
+
+    const imagesSelected: DeviceVariant[] = [];
+    const selectedImageHashes = new Set<string>();
 
     // Select images for this layout
     for (const candidate of shuffledCandidates) {
       if (imagesSelected.length >= imagesNeeded) {
+        console.log(`Selected enough images for layout ${layoutType} on device ${deviceId}`);
         break;
       }
-      if (!imagesSelected.find((img) => img.blob_hash === candidate.blob_hash)) {
+      if (!selectedImageHashes.has(candidate.blob_hash)) {
         imagesSelected.push(candidate);
+        selectedImageHashes.add(candidate.blob_hash);
       }
     }
 
     if (imagesSelected.length < imagesNeeded) {
+      console.warn(`Could not select enough unique images for layout ${layoutType} on device ${deviceId}, needed ${imagesNeeded} but found ${imagesSelected.length}`);
       continue; // Could not select enough unique images
+    }
+
+    let sourceColor: string | undefined = undefined;
+    if (imagesSelected.length === 1) {
+      const blob = blobMap.get(imagesSelected[0].blob_hash);
+      if (blob) {
+        sourceColor = blob.color_source;
+      }
+    } else {
+      const imageQuants = await Promise.all(imagesSelected.map((img) => fetchFile<QuantizedImage>(`images/quantized/${img.blob_hash}.json`)));
+
+      const combinedQuants = new Map<number, number>();
+      for (const quant of imageQuants) {
+        for (const [hex, count] of Object.entries(quant.colors)) {
+          const argb = argbFromHex(hex);
+          const existingCount = combinedQuants.get(argb) || 0;
+          combinedQuants.set(argb, existingCount + count);
+        }
+      }
+
+      const rankedColors = Score.score(combinedQuants, {
+        desired: 8,
+        filter: true,
+        fallbackColorARGB: 0xff4285f4,
+      });
+      sourceColor = hexFromArgb(rankedColors[0]);
     }
 
     // Add selected images to queue
     queue.push({
-      layoutType: layout as "monotych" | "diptych" | "triptych",
+      layoutType,
       images: imagesSelected.map((img) => {
-        const blob = blobMap.get(img.blob_hash);
         return {
           url: img.storage_path.replace(/^gs:\/\//, "https://storage.googleapis.com/"),
-          source_color: blob.color_source,
+          source_color: sourceColor,
           // color_palette: img.color_palette,
           // blob_hash: img.blob_hash,
         };
