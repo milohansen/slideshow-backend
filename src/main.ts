@@ -11,7 +11,7 @@ import authRoutes from "./routes/auth.ts";
 import uiRoutes from "./routes/ui.tsx";
 import { initStorage, fetchFile } from "./services/storage.ts";
 import { runPendingJobs } from "./services/jobs.ts";
-import { analyzeAllUnanalyzedImages } from "./services/ai.ts";
+import { analyzeAllUnanalyzedImages, reanalyzeAllImages } from "./services/ai.ts";
 import { cleanDuplicateDeviceVariants } from "./db/helpers-firestore.ts";
 
 const app = new Hono();
@@ -42,6 +42,9 @@ try {
 
 analyzeAllUnanalyzedImages().catch((error) => {
   console.error("🔥 Failed to analyze unanalyzed images on startup:", error);
+});
+reanalyzeAllImages().catch((error) => {
+  console.error("🔥 Failed to reanalyze images on startup:", error);
 });
 
 // Health check endpoint for Cloud Run

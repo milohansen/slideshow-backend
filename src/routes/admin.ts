@@ -134,7 +134,7 @@ admin.post("/images/analyze/:id", async (c) => {
   }
 
   try {
-    const analysis = await generateImageAnalysis(imageId, blob.storage_path.replace("gs://", "https://storage.googleapis.com/"));
+    const analysis = await generateImageAnalysis(imageId, blob.storage_path.replace("gs://", "https://storage.googleapis.com/"), true);
     return c.json({ success: true, analysis });
   } catch (error) {
     console.error(`[Admin] Failed to analyze image ${imageId}:`, error);

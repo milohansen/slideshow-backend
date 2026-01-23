@@ -98,6 +98,12 @@ export async function listUnanalyzedBlobs(): Promise<Blob[]> {
 
   return unanalyzedBlobs;
 }
+export async function listBlobs(): Promise<Blob[]> {
+  const db = getFirestore();
+  const snapshot = await db.collection(Collections.BLOBS).get();
+
+  return snapshot.docs.map((doc) => doc.data() as Blob);
+}
 
 // ========== Source Operations ==========
 

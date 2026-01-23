@@ -1,5 +1,5 @@
 import { Timestamp } from "@google-cloud/firestore";
-import type { FocalPoint } from "../services/ai";
+import type { AIAnalysis } from "../services/ai";
 
 /**
  * TypeScript types for Firestore documents
@@ -22,10 +22,10 @@ export type Blob = {
   blurhash?: string;
   exif_data?: string; // JSON string
   created_at: string; // ISO timestamp
-  name?: string;
+  title?: string;
   description?: string;
   analyzed_at?: string; // ISO timestamp
-  focal_points?: FocalPoint[]; // JSON string
+  analysis?: AIAnalysis;
 };
 
 export type Source = {
