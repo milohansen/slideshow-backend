@@ -1,7 +1,3 @@
-# Deno
-.deno/
-# deno.lock
-
 # Database
 *.db
 *.db-journal
@@ -14,11 +10,6 @@
 
 # Logs
 *.log
-
-# IDE
-.vscode/
-.idea/
-.ai
 
 # OS
 .DS_Store
