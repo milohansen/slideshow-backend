@@ -21,7 +21,7 @@
 
 - **Dynamic Port Configuration**: Changed from hardcoded 8000 to environment-based 8080
   ```typescript
-  const port = Number(Deno.env.get("PORT")) || 8080;
+  const port = Number(process.env.PORT) || 8080;
   ```
 
 - **Graceful Shutdown**: Added SIGTERM and SIGINT handlers for clean container termination

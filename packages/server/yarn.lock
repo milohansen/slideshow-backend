@@ -197,15 +197,15 @@ __metadata:
   linkType: hard
 
 "@google-cloud/firestore@npm:^8.1.0":
-  version: 8.2.0
-  resolution: "@google-cloud/firestore@npm:8.2.0"
+  version: 8.1.0
+  resolution: "@google-cloud/firestore@npm:8.1.0"
   dependencies:
     "@opentelemetry/api": "npm:^1.9.0"
     fast-deep-equal: "npm:^3.1.3"
     functional-red-black-tree: "npm:^1.0.1"
     google-gax: "npm:^5.0.1"
     protobufjs: "npm:^7.5.3"
-  checksum: 10c0/bced2bc28008e82b4ed27990e6077addd6ef2662937977ca13d78af62bedc1d01abf7ec1948ab0db3e5490f2299ac49b1507a562b3b3b7480f3e13a58283dec9
+  checksum: 10c0/25e7aa95cdf8d9ff05e5dacd6e8e2b41973cabf20fa9a5e4033e25c62038a35fd3de91099ffee1b968952267e26aae650ab000dc472238f1c47dd2b065e795d3
   languageName: node
   linkType: hard
 
@@ -275,8 +275,8 @@ __metadata:
   linkType: hard
 
 "@google/genai@npm:^1.37.0":
-  version: 1.38.0
-  resolution: "@google/genai@npm:1.38.0"
+  version: 1.37.0
+  resolution: "@google/genai@npm:1.37.0"
   dependencies:
     google-auth-library: "npm:^10.3.0"
     protobufjs: "npm:^7.5.4"
@@ -286,7 +286,7 @@ __metadata:
   peerDependenciesMeta:
     "@modelcontextprotocol/sdk":
       optional: true
-  checksum: 10c0/673a4bfc70af150c1c4a32605bb265a96a9fad69ecc14f82b18297995a6dd735259b70d6e47b3504be5282a958330450c466756508347ac0660909ae17d1800a
+  checksum: 10c0/4f7c18e575ed25c3f1fbc38f3fb72dbb610ca419280253ba08ba6cc3c8190ecc76cc0580b21a2457deb60b5c6ad5be184fd0d8907281490ef6e184a5dd2b38bb
   languageName: node
   linkType: hard
 
@@ -315,11 +315,11 @@ __metadata:
   linkType: hard
 
 "@hono/node-server@npm:^1.19.8":
-  version: 1.19.9
-  resolution: "@hono/node-server@npm:1.19.9"
+  version: 1.19.8
+  resolution: "@hono/node-server@npm:1.19.8"
   peerDependencies:
     hono: ^4
-  checksum: 10c0/de18c06b6b266dc45fe55fb82053bd1da8fe84939c49b6fbab4d2448b679d54ab5affbf8b15de9bead26f29b1755284d770aafb5ad14a8e4b3cfb4f79334554e
+  checksum: 10c0/47955a497523f7c90db83e9a7a3cf589a824a9ddc8b0ba80c11f849638f6b9a08f519df4e15facd69381a1993ae19bb3fa5fe31b3d562b0341940eb51b99848b
   languageName: node
   linkType: hard
 
@@ -785,20 +785,20 @@ __metadata:
   linkType: hard
 
 "@std/cli@jsr:@std/cli@^1.0.25":
-  version: 1.0.26
-  resolution: "@std/cli@jsr:1.0.26::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__cli%2F1.0.26.tgz"
+  version: 1.0.25
+  resolution: "@std/cli@jsr:1.0.25::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__cli%2F1.0.25.tgz"
   dependencies:
     "@jsr/std__internal": "npm:^1.0.12"
-  checksum: 10c0/20d4a17a1cbb2db7a381784e4ed5897d7343a7d7a217acc836826d1fd7bb94fd8af5fdb3a556841bb520fe112b4723512732c4710b49c6c22bb1ff6bcd458408
+  checksum: 10c0/6c11d42ecf10730a3b44088f9894bc772491da4bbd0896b406fb1c3f948b9d62856073ade88ed29c2cd165a1f9aaff2f2dcdcf87dbc93880d4ece9a61ab61959
   languageName: node
   linkType: hard
 
 "@std/cli@npm:@jsr/std__cli@^1.0.25":
-  version: 1.0.26
-  resolution: "@jsr/std__cli@npm:1.0.26::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__cli%2F1.0.26.tgz"
+  version: 1.0.25
+  resolution: "@jsr/std__cli@npm:1.0.25::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__cli%2F1.0.25.tgz"
   dependencies:
     "@jsr/std__internal": "npm:^1.0.12"
-  checksum: 10c0/20d4a17a1cbb2db7a381784e4ed5897d7343a7d7a217acc836826d1fd7bb94fd8af5fdb3a556841bb520fe112b4723512732c4710b49c6c22bb1ff6bcd458408
+  checksum: 10c0/6c11d42ecf10730a3b44088f9894bc772491da4bbd0896b406fb1c3f948b9d62856073ade88ed29c2cd165a1f9aaff2f2dcdcf87dbc93880d4ece9a61ab61959
   languageName: node
   linkType: hard
 
@@ -831,22 +831,22 @@ __metadata:
   linkType: hard
 
 "@std/fs@jsr:@std/fs@^1.0.21":
-  version: 1.0.22
-  resolution: "@std/fs@jsr:1.0.22::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__fs%2F1.0.22.tgz"
+  version: 1.0.21
+  resolution: "@std/fs@jsr:1.0.21::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__fs%2F1.0.21.tgz"
   dependencies:
     "@jsr/std__internal": "npm:^1.0.12"
     "@jsr/std__path": "npm:^1.1.4"
-  checksum: 10c0/133887a3756f33f6df40739c29b2ea556d75902facc0b9570d2c5c3c8df66569fe730c75dbc823774a135aef807d2db9538a7eda50803ec7a000e5b7abf28a8a
+  checksum: 10c0/4db898677aeecd41085608a71e1a5c65194c08e97d92c2b25bab01e9b772b47709db2abac868cebba7e840ea84117db55e53f298c1e077d1894a05947021ba09
   languageName: node
   linkType: hard
 
 "@std/fs@npm:@jsr/std__fs@^1.0.21":
-  version: 1.0.22
-  resolution: "@jsr/std__fs@npm:1.0.22::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__fs%2F1.0.22.tgz"
+  version: 1.0.21
+  resolution: "@jsr/std__fs@npm:1.0.21::__archiveUrl=https%3A%2F%2Fnpm.jsr.io%2F~%2F11%2F%40jsr%2Fstd__fs%2F1.0.21.tgz"
   dependencies:
     "@jsr/std__internal": "npm:^1.0.12"
     "@jsr/std__path": "npm:^1.1.4"
-  checksum: 10c0/133887a3756f33f6df40739c29b2ea556d75902facc0b9570d2c5c3c8df66569fe730c75dbc823774a135aef807d2db9538a7eda50803ec7a000e5b7abf28a8a
+  checksum: 10c0/4db898677aeecd41085608a71e1a5c65194c08e97d92c2b25bab01e9b772b47709db2abac868cebba7e840ea84117db55e53f298c1e077d1894a05947021ba09
   languageName: node
   linkType: hard
 
@@ -892,20 +892,20 @@ __metadata:
   linkType: hard
 
 "@types/node@npm:*, @types/node@npm:>=13.7.0":
-  version: 25.0.10
-  resolution: "@types/node@npm:25.0.10"
+  version: 25.0.7
+  resolution: "@types/node@npm:25.0.7"
   dependencies:
     undici-types: "npm:~7.16.0"
-  checksum: 10c0/9edc3c812b487c32c76eebac7c87acae1f69515a0bc3f6b545806d513eb9e918c3217bf751dc93da39f60e06bf1b0caa92258ef3a6dd6457124b2e761e54f61f
+  checksum: 10c0/a9feeb16a6487621ef96158e7a9759f89e3c1726189c7b19a9e6d3e0d581499c62e441e120e5a334e9eb01bc4d26644f27767fd5931d6d4f177d14f4f8e3f9ab
   languageName: node
   linkType: hard
 
 "@types/node@npm:^24.0.0":
-  version: 24.10.9
-  resolution: "@types/node@npm:24.10.9"
+  version: 24.10.8
+  resolution: "@types/node@npm:24.10.8"
   dependencies:
     undici-types: "npm:~7.16.0"
-  checksum: 10c0/e9e436fcd2136bddb1bbe3271a89f4653910bcf6ee8047c4117f544c7905a106c039e2720ee48f28505ef2560e22fb9ead719f28bf5e075fdde0c1120e38e3b2
+  checksum: 10c0/aed2ac8c4a87be5c710f65ccfc57a272829dd00d0f6a687375323b348c55c92a6e7ff3b9d3ec596b1cc09ba2d080ce71b2ec9a67c14d12e04b02b67b14e81a74
   languageName: node
   linkType: hard
 
@@ -1793,9 +1793,9 @@ __metadata:
   linkType: hard
 
 "hono@npm:^4.11.3":
-  version: 4.11.6
-  resolution: "hono@npm:4.11.6"
-  checksum: 10c0/dc1f66bc6c6e09ac94ca5096bf18367d3b2b7d297012b681718c526ada991afc4a4a5b0a006b575c9f8a7bb53c39156154a149a5fba3d5f577935a4b6a572235
+  version: 4.11.4
+  resolution: "hono@npm:4.11.4"
+  checksum: 10c0/19b5ebf28f89ad8e8d9fc465e9e9073026a344e15e841b5b251831b0ae3843e50c29328c95e69a0d7e2681c5b35e475445f4faf59d3d51c6c32a834a0211099a
   languageName: node
   linkType: hard
 
@@ -1977,9 +1977,9 @@ __metadata:
   linkType: hard
 
 "lru-cache@npm:^11.0.0, lru-cache@npm:^11.1.0, lru-cache@npm:^11.2.1":
-  version: 11.2.5
-  resolution: "lru-cache@npm:11.2.5"
-  checksum: 10c0/cc98958d25dddf1c8a8cbdc49588bd3b24450e8dfa78f32168fd188a20d4a0331c7406d0f3250c86a46619ee288056fd7a1195e8df56dc8a9592397f4fbd8e1d
+  version: 11.2.4
+  resolution: "lru-cache@npm:11.2.4"
+  checksum: 10c0/4a24f9b17537619f9144d7b8e42cd5a225efdfd7076ebe7b5e7dc02b860a818455201e67fbf000765233fe7e339d3c8229fc815e9b58ee6ede511e07608c19b2
   languageName: node
   linkType: hard
 
@@ -2563,64 +2563,6 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"slideshow-processor@workspace:packages/processor":
-  version: 0.0.0-use.local
-  resolution: "slideshow-processor@workspace:packages/processor"
-  dependencies:
-    "@google-cloud/firestore": "npm:^8.1.0"
-    "@google-cloud/run": "npm:^3.1.0"
-    "@google-cloud/storage": "npm:7.18.0"
-    "@google-cloud/tasks": "npm:6.2.1"
-    "@google/genai": "npm:^1.37.0"
-    "@grpc/grpc-js": "npm:^1.14.3"
-    "@grpc/proto-loader": "npm:^0.8.0"
-    "@hono/node-server": "npm:^1.19.8"
-    "@material/material-color-utilities": "npm:^0.3.0"
-    "@std/cli": "jsr:@std/cli@^1.0.25"
-    "@std/crypto": "jsr:@std/crypto@^1.0.5"
-    "@std/encoding": "jsr:@std/encoding@^1.0.10"
-    "@std/fs": "jsr:@std/fs@^1.0.21"
-    "@std/msgpack": "jsr:^1.0.3"
-    "@std/path": "jsr:@std/path@^1.1.4"
-    "@types/node": "npm:^24.0.0"
-    arctic: "npm:^3.7.0"
-    hono: "npm:^4.11.3"
-    mime: "npm:^4.1.0"
-    sharp: "npm:^0.34.5"
-    tsx: "npm:^4.21.0"
-    typescript: "npm:^5.9.0"
-  languageName: unknown
-  linkType: soft
-
-"slideshow-server@workspace:packages/server":
-  version: 0.0.0-use.local
-  resolution: "slideshow-server@workspace:packages/server"
-  dependencies:
-    "@google-cloud/firestore": "npm:^8.1.0"
-    "@google-cloud/run": "npm:^3.1.0"
-    "@google-cloud/storage": "npm:7.18.0"
-    "@google-cloud/tasks": "npm:6.2.1"
-    "@google/genai": "npm:^1.37.0"
-    "@grpc/grpc-js": "npm:^1.14.3"
-    "@grpc/proto-loader": "npm:^0.8.0"
-    "@hono/node-server": "npm:^1.19.8"
-    "@material/material-color-utilities": "npm:^0.3.0"
-    "@std/cli": "jsr:@std/cli@^1.0.25"
-    "@std/crypto": "jsr:@std/crypto@^1.0.5"
-    "@std/encoding": "jsr:@std/encoding@^1.0.10"
-    "@std/fs": "jsr:@std/fs@^1.0.21"
-    "@std/msgpack": "jsr:^1.0.3"
-    "@std/path": "jsr:@std/path@^1.1.4"
-    "@types/node": "npm:^24.0.0"
-    arctic: "npm:^3.7.0"
-    hono: "npm:^4.11.3"
-    mime: "npm:^4.1.0"
-    sharp: "npm:^0.34.5"
-    tsx: "npm:^4.21.0"
-    typescript: "npm:^5.9.0"
-  languageName: unknown
-  linkType: soft
-
 "smart-buffer@npm:^4.2.0":
   version: 4.2.0
   resolution: "smart-buffer@npm:4.2.0"
@@ -2738,15 +2680,15 @@ __metadata:
   linkType: hard
 
 "tar@npm:^7.5.2":
-  version: 7.5.6
-  resolution: "tar@npm:7.5.6"
+  version: 7.5.2
+  resolution: "tar@npm:7.5.2"
   dependencies:
     "@isaacs/fs-minipass": "npm:^4.0.0"
     chownr: "npm:^3.0.0"
     minipass: "npm:^7.1.2"
     minizlib: "npm:^3.1.0"
     yallist: "npm:^5.0.0"
-  checksum: 10c0/08af3807035957650ad5f2a300c49ca4fe0566ac0ea5a23741a5b5103c6da42891a9eeaed39bc1fbcf21c5cac4dc846828a004727fb08b9d946322d3144d1fd2
+  checksum: 10c0/a7d8b801139b52f93a7e34830db0de54c5aa45487c7cb551f6f3d44a112c67f1cb8ffdae856b05fd4f17b1749911f1c26f1e3a23bbe0279e17fd96077f13f467
   languageName: node
   linkType: hard
 

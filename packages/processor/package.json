@@ -1,11 +1,15 @@
 {
-  "name": "slideshow-backend",
+  "name": "slideshow-processor",
   "version": "1.0.0",
-  "description": "Backend service for slideshow image management with Google Cloud integration",
+  "description": "Image processing designed for slideshow backend using Node.js",
+  "main": "src/main.ts",
   "type": "module",
-  "workspaces": [
-    "packages/*"
-  ],
+  "scripts": {
+    "dev": "yarn tsx --watch --env-file=.env --inspect=5859 src/main.ts",
+    "start": "yarn tsx src/main.ts",
+    "type-check": "tsc --noEmit",
+    "test": "node --test"
+  },
   "dependencies": {
     "@google-cloud/firestore": "^8.1.0",
     "@google-cloud/run": "^3.1.0",
