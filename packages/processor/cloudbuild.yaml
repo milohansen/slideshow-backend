@@ -1,6 +1,7 @@
 steps:
   # Build the container
   - name: 'gcr.io/cloud-builders/docker'
+    dir: packages/processor
     args: 
       - 'build'
       - '-t'
