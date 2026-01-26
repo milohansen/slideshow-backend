@@ -28,4 +28,4 @@ ENV NODE_ENV=production
 EXPOSE 8080
 
 # Run the application
-CMD ["yarn", "tsx", "packages/server/src/main.ts"]
+CMD ["yarn", "tsx", "/src/server.ts"]

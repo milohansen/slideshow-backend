@@ -30,7 +30,8 @@ steps:
         --labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID
       - '--region=$_DEPLOY_REGION'
       - '--quiet'
-    id: Deploy
+      - '--command=yarn,tsx,src/server.ts'
+    id: Deploy Server
     entrypoint: gcloud
     # Deploy as Cloud Run Job
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
@@ -52,7 +53,8 @@ steps:
       - '--set-env-vars=BACKEND_API_URL=${_BACKEND_API_URL}'
       - '--set-env-vars=GEMINI_API_KEY=${_GEMINI_API_KEY}'
       - '--service-account=${_SERVICE_ACCOUNT}'
-      - '--command=yarn,tsx,packages/processor/main.ts'
+      - '--command=yarn,tsx,src/processor.ts'
+    id: Deploy Processor
 
 images:
   - >-
