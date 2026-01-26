@@ -11,7 +11,8 @@ RUN corepack enable \
 COPY package.json yarn.lock ./
 
 # Install dependencies
-RUN yarn install --immutable
+# RUN yarn install --immutable
+RUN yarn install
 
 # Copy source code
 COPY . .
