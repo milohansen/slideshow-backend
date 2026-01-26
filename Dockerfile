@@ -8,14 +8,14 @@ RUN corepack enable \
     && yarn -v
 
 # Copy package files
-COPY package.json yarn.lock ./
+# COPY package.json yarn.lock ./
+
+# Copy source code
+COPY . .
 
 # Install dependencies
 # RUN yarn install --immutable
 RUN yarn install
-
-# Copy source code
-COPY . .
 
 # Create data directories with proper permissions
 RUN mkdir -p /app/data /app/data/processed && \
