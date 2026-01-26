@@ -1,0 +1,75 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    # dir: packages/server
+    args:
+      - build
+      - '--no-cache'
+      - '-t'
+      - >-
+        $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - .
+      - '-f'
+      - Dockerfile
+    id: Build
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - >-
+        $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+    id: Push
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    args:
+      - run
+      - services
+      - update
+      - $_SERVICE_NAME
+      - '--platform=managed'
+      - >-
+        --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - >-
+        --labels=managed-by=gcp-cloud-build-deploy-cloud-run,commit-sha=$COMMIT_SHA,gcb-build-id=$BUILD_ID,gcb-trigger-id=$_TRIGGER_ID
+      - '--region=$_DEPLOY_REGION'
+      - '--quiet'
+    id: Deploy
+    entrypoint: gcloud
+    # Deploy as Cloud Run Job
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'jobs'
+      - 'deploy'
+      - 'slideshow-processor'
+      - >-
+        --image=$_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+      - '--tasks=1'
+      - '--max-retries=3'
+      - '--task-timeout=15m'
+      - '--cpu=2'
+      - '--memory=2Gi'
+      - '--region=$_DEPLOY_REGION'
+      - '--set-env-vars=GCS_BUCKET_NAME=${_GCS_BUCKET_NAME}'
+      - '--set-env-vars=BACKEND_API_URL=${_BACKEND_API_URL}'
+      - '--set-env-vars=GEMINI_API_KEY=${_GEMINI_API_KEY}'
+      - '--service-account=${_SERVICE_ACCOUNT}'
+      - '--command=yarn,tsx,packages/processor/main.ts'
+
+images:
+  - >-
+    $_AR_HOSTNAME/$_AR_PROJECT_ID/$_AR_REPOSITORY/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA
+options:
+  substitutionOption: ALLOW_LOOSE
+  logging: CLOUD_LOGGING_ONLY
+substitutions:
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _AR_PROJECT_ID: crafty-router-207406
+  _PLATFORM: managed
+  _TRIGGER_ID: 3ad77bf3-997a-4774-8cf2-c200a7d2477f
+  _SERVICE_NAME: slideshow-backend
+  _DEPLOY_REGION: northamerica-northeast1
+  _AR_HOSTNAME: northamerica-northeast1-docker.pkg.dev
+tags:
+  - gcp-cloud-build-deploy-cloud-run
+  - gcp-cloud-build-deploy-cloud-run-managed
+  - slideshow-backend
+
