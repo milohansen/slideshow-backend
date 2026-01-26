@@ -65,7 +65,7 @@ app.route("/api", apiRoutes);
 // app.route("/ui", uiRoutes);
 
 // Serve static assets
-app.use("/assets/*", serveStatic({ root: "./" }));
+app.use("/assets/*", serveStatic({ root: "./src/" }));
 
 // Redirect root to UI
 app.use("*", optionalAuth);
